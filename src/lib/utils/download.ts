@@ -10,7 +10,7 @@ import {
 } from "@/lib/storage-manager";
 import { MusicSource, MusicTrack } from "@/types/music";
 import toast from "react-hot-toast";
-import { base64ToBlob } from "@/lib/utils/base64";
+import { base64ToBlobAsync, base64ToArrayBuffer } from "@/lib/utils/base64";
 import {
   hasDownloadedTrack,
 } from "@/lib/utils/download-records";
@@ -361,27 +361,18 @@ async function embedMetadataNative(
       directory: STORAGE_CONFIG.BASE_DIR,
     });
 
-    const ext = filePath.split('.').pop()?.toLowerCase() || 'mp3';
-    const mimeMap: Record<string, string> = {
-      mp3: 'audio/mpeg',
-      flac: 'audio/flac',
-      wav: 'audio/wav',
-      ogg: 'audio/ogg',
-      aac: 'audio/aac',
-      m4a: 'audio/mp4',
-      wma: 'audio/x-ms-wma',
-      opus: 'audio/opus',
-    };
-    const mimeType = mimeMap[ext] || 'audio/mpeg';
-    const blob = base64ToBlob(readResult.data as string, mimeType);
+    const base64Data = readResult.data as string;
+    // 直接转换为 ArrayBuffer，避免创建中间 Blob
+    const buffer = base64ToArrayBuffer(base64Data);
 
     const store = useMusicStore.getState();
-    const result = await embedMetadata(blob, track, {
+    const result = await embedMetadata(buffer, track, {
       embedCover: store.embedCover,
       embedLyric: store.embedLyric,
     });
 
-    const newBase64 = await blobToBase64(result.blob);
+    // 使用 ArrayBuffer 转 base64，避免额外的 Blob 创建
+    const newBase64 = arrayBufferToBase64(result.arrayBuffer);
 
     await Filesystem.writeFile({
       path: filePath,
@@ -391,6 +382,15 @@ async function embedMetadataNative(
   } catch (e) {
     logger.warn("download", "Native 元数据嵌入失败", e);
   }
+}
+
+function arrayBufferToBase64(buffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(buffer);
+  let binary = "";
+  for (let i = 0; i < bytes.length; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return btoa(binary);
 }
 
 async function blobToBase64(blob: Blob): Promise<string> {
@@ -476,11 +476,12 @@ async function applyMetadata(
   if (toastId) toast.loading("正在写入元数据...", { id: toastId });
 
   try {
-    const result = await embedMetadata(blob, track, {
+    const buffer = await blob.arrayBuffer();
+    const result = await embedMetadata(buffer, track, {
       embedCover: store.embedCover,
       embedLyric: store.embedLyric,
     });
-    return result.blob;
+    return new Blob([result.arrayBuffer], { type: blob.type });
   } catch (e) {
     logger.warn("download", "元数据嵌入失败", e);
     return blob;

@@ -6,7 +6,7 @@ import { musicApi } from "@/lib/music-api";
 import { logger } from "@/lib/logger";
 import type { MusicTrack } from "@/types/music";
 
-export const MAX_EMBED_SIZE = 10 * 1024 * 1024; // 10MB
+export const MAX_EMBED_SIZE = 60 * 1024 * 1024; // 60MB
 
 const MP3_MIME_TYPES = new Set([
   "audio/mpeg",
@@ -14,13 +14,13 @@ const MP3_MIME_TYPES = new Set([
 ]);
 
 interface EmbedResult {
-  blob: Blob;
+  arrayBuffer: ArrayBuffer;
   coverEmbedded: boolean;
   lyricEmbedded: boolean;
 }
 
 export async function embedMetadata(
-  mp3Blob: Blob,
+  mp3Buffer: ArrayBuffer,
   track: MusicTrack,
   options: { embedCover: boolean; embedLyric: boolean }
 ): Promise<EmbedResult> {
@@ -28,32 +28,33 @@ export async function embedMetadata(
 
   if (!embedCover && !embedLyric) {
     return {
-      blob: mp3Blob,
+      arrayBuffer: mp3Buffer,
       coverEmbedded: false,
       lyricEmbedded: false,
     };
   }
 
-  if (!MP3_MIME_TYPES.has(mp3Blob.type)) {
-    logger.warn("id3-embed", `跳过非 MP3 格式的元数据嵌入: ${mp3Blob.type}`);
+  // 检查是否为 MP3 格式（通过检查文件头）
+  const isMp3 = isMp3Buffer(mp3Buffer);
+  if (!isMp3) {
+    logger.warn("id3-embed", `跳过非 MP3 格式的元数据嵌入`);
     return {
-      blob: mp3Blob,
+      arrayBuffer: mp3Buffer,
       coverEmbedded: false,
       lyricEmbedded: false,
     };
   }
 
-  if (mp3Blob.size > MAX_EMBED_SIZE) {
-    logger.warn("id3-embed", `文件过大 (${(mp3Blob.size / 1024 / 1024).toFixed(1)}MB)，跳过元数据嵌入`);
+  if (mp3Buffer.byteLength > MAX_EMBED_SIZE) {
+    logger.warn("id3-embed", `文件过大 (${(mp3Buffer.byteLength / 1024 / 1024).toFixed(1)}MB)，跳过元数据嵌入`);
     return {
-      blob: mp3Blob,
+      arrayBuffer: mp3Buffer,
       coverEmbedded: false,
       lyricEmbedded: false,
     };
   }
 
-  const buffer = await mp3Blob.arrayBuffer();
-  const writer = new ID3Writer(buffer);
+  const writer = new ID3Writer(mp3Buffer);
 
   let coverEmbedded = false;
   let lyricEmbedded = false;
@@ -87,13 +88,30 @@ export async function embedMetadata(
     }
   }
 
-  writer.addTag();
+  const arrayBuffer = writer.addTag();
 
   return {
-    blob: writer.getBlob(),
+    arrayBuffer,
     coverEmbedded,
     lyricEmbedded,
   };
+}
+
+function isMp3Buffer(buffer: ArrayBuffer): boolean {
+  // MP3 文件以 ID3 标签或 MPEG 同步字开头
+  const bytes = new Uint8Array(buffer.slice(0, 4));
+  
+  // ID3v2 标签：49 44 33 (ID3)
+  if (bytes[0] === 0x49 && bytes[1] === 0x44 && bytes[2] === 0x33) {
+    return true;
+  }
+  
+  // MPEG 同步字：0xFF 0xFB 或 0xFF 0xFA 或 0xFF 0xF3 或 0xFF 0xF2
+  if (bytes[0] === 0xFF && (bytes[1] & 0xE0) === 0xE0) {
+    return true;
+  }
+  
+  return false;
 }
 
 async function fetchCoverData(track: MusicTrack): Promise<Uint8Array | null> {
