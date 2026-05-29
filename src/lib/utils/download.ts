@@ -25,7 +25,7 @@ import { logger } from "@/lib/logger";
 import { processBatchIO } from "@/lib/utils";
 import { embedMetadata, MAX_EMBED_SIZE } from "./id3-embed";
 
-const DOWNLOAD_TIMEOUT_MS = 5 * 60 * 1000;
+const DOWNLOAD_TIMEOUT_MS = 30 * 60 * 1000; // 30 分钟
 
 function getCurrentPlayingUrl(
   track: MusicTrack,
@@ -452,6 +452,11 @@ async function downloadWeb(
     const rawBlob = new Blob(chunks as BlobPart[], { type: contentType });
     const blob = await applyMetadata(rawBlob, track, toastId, opts);
     triggerBlobDownload(blob, fileName, toastId);
+  } catch (err) {
+    if (err instanceof Error && err.name === 'AbortError') {
+      throw new Error('下载超时，请检查网络连接');
+    }
+    throw err;
   } finally {
     clearTimeout(timeoutId);
   }

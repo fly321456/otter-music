@@ -6,7 +6,7 @@ import { musicApi } from "@/lib/music-api";
 import { logger } from "@/lib/logger";
 import type { MusicTrack } from "@/types/music";
 
-export const MAX_EMBED_SIZE = 50 * 1024 * 1024; // 50MB
+export const MAX_EMBED_SIZE = 10 * 1024 * 1024; // 10MB
 
 const MP3_MIME_TYPES = new Set([
   "audio/mpeg",
