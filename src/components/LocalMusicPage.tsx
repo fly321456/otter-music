@@ -19,7 +19,12 @@ import {
 } from "@/components/ui/dialog";
 import toast from "react-hot-toast";
 import { convertToMusicTrack } from "@/lib/utils/download";
+import {
+  mergeLocalFilesWithDownloadRecords,
+  normalizeLocalPath,
+} from "@/lib/utils/download-records";
 import { useMusicStore } from "@/store/music-store";
+import { useDownloadStore } from "@/store/download-store";
 import { useLocalMusicStore } from "@/store/local-music-store";
 import { LocalMusicPermissionDialog } from "./LocalMusicPermissionDialog";
 import { logger } from "@/lib/logger";
@@ -50,8 +55,9 @@ export function LocalMusicPage({
   /* =========================
      Store
   ========================= */
-  const { queue, currentIndex, skipToNext } = useMusicStore();
+  const { queue, currentIndex, skipToNext, downloadDirectory } = useMusicStore();
   const { files, setFiles, updateFiles, setScanning } = useLocalMusicStore();
+  const downloadRecords = useDownloadStore((state) => state.records);
 
   /* =========================
      扫描逻辑（单一职责）
@@ -63,10 +69,11 @@ export function LocalMusicPage({
       setScanning(true, type);
 
       try {
+        const scanOptions = downloadDirectory ? { downloadDirectory } : undefined;
         const result =
           type === "quick"
-            ? await LocalMusicPlugin.scanLocalMusic()
-            : await LocalMusicPlugin.scanAllStorage();
+            ? await LocalMusicPlugin.scanLocalMusic(scanOptions)
+            : await LocalMusicPlugin.scanAllStorage(scanOptions);
 
         if (result.success) {
           setFiles(result.files);
@@ -88,11 +95,11 @@ export function LocalMusicPage({
         setScanning(false);
       }
     },
-    [setFiles, setScanning]
+    [setFiles, setScanning, downloadDirectory]
   );
 
   /* =========================
-     初始化扫描（安全写法）
+     初始化扫描 - 仅在首次进入且无数据时执行一次
   ========================= */
   const initRef = useRef(false);
 
@@ -157,6 +164,15 @@ export function LocalMusicPage({
 
         updateFiles((prev) => prev.filter((f) => f.localPath !== localPath));
 
+        if (shouldDeleteFile) {
+          const recordEntry = Object.entries(useDownloadStore.getState().records).find(
+            ([, uri]) => normalizeLocalPath(uri) === normalizeLocalPath(localPath)
+          );
+          if (recordEntry) {
+            await useDownloadStore.getState().removeRecord(recordEntry[0]);
+          }
+        }
+
         const currentTrack = queue[currentIndex];
         if (currentTrack?.id === track.id) {
           skipToNext();
@@ -212,9 +228,14 @@ export function LocalMusicPage({
   /* =========================
      转换数据
   ========================= */
+  const displayFiles = useMemo(
+    () => mergeLocalFilesWithDownloadRecords(files, downloadRecords),
+    [files, downloadRecords]
+  );
+
   const tracks = useMemo(
     () =>
-      files
+      displayFiles
         .map((file, index) => ({ file, index }))
         .sort((a, b) => {
           const aTime = a.file.modifiedTime ?? Number.NEGATIVE_INFINITY;
@@ -222,7 +243,7 @@ export function LocalMusicPage({
           return bTime - aTime || a.index - b.index;
         })
         .map(({ file }) => convertToMusicTrack(file)),
-    [files]
+    [displayFiles]
   );
 
   const handlePlay = (track: MusicTrack | null, index?: number) => {
@@ -280,17 +301,30 @@ export function LocalMusicPage({
       title="本地音乐"
       onBack={onBack}
       action={
-        <button
-          onClick={() => handleScan("full")}
-          disabled={isLoading}
-          className={cn(
-            "flex items-center gap-2 px-3 py-1.5 text-xs rounded-lg",
-            isLoading && "opacity-50 cursor-not-allowed"
-          )}
-        >
-          <HardDrive className="h-3.5 w-3.5" />
-          全盘扫描
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => handleScan("quick")}
+            disabled={isLoading}
+            className={cn(
+              "flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg",
+              isLoading && "opacity-50 cursor-not-allowed"
+            )}
+          >
+            <RefreshCw className={cn("h-3.5 w-3.5", isLoading && "animate-spin")} />
+            刷新
+          </button>
+          <button
+            onClick={() => handleScan("full")}
+            disabled={isLoading}
+            className={cn(
+              "flex items-center gap-2 px-3 py-1.5 text-xs rounded-lg",
+              isLoading && "opacity-50 cursor-not-allowed"
+            )}
+          >
+            <HardDrive className="h-3.5 w-3.5" />
+            全盘扫描
+          </button>
+        </div>
       }
     >
       <MusicPlaylistView

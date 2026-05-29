@@ -7,6 +7,7 @@ import { useSourceQualityStore } from "@/store/source-quality-store";
 import { useDownloadStore } from "@/store/download-store";
 import { Capacitor } from "@capacitor/core";
 import { buildDownloadKey } from "@/lib/utils/download";
+import { findDownloadedRecordByTrack } from "@/lib/utils/download-records";
 import type { MusicSource } from "@/types/music";
 import toast from "react-hot-toast";
 import { handleAutoMatch } from "@/lib/audio-match";
@@ -108,17 +109,21 @@ function waitForAudioReady(
 }
 
 async function resolveLocalDownloadUrl({
-  trackId,
-  source,
+  track,
 }: {
-  trackId: string;
-  source: MusicSource;
+  track: { id: string; source: MusicSource; name: string; artist: string[] };
 }): Promise<{ url: string | null; downloadKey: string | null }> {
   const isNative = Capacitor.isNativePlatform();
-  const isLocal = source === "local";
+  const isLocal = track.source === "local";
   if (isNative && !isLocal) {
-    const downloadKey = buildDownloadKey(source, trackId);
-    const uri = useDownloadStore.getState().getUri(downloadKey);
+    const downloadStore = useDownloadStore.getState();
+    const matchedRecord = findDownloadedRecordByTrack(
+      downloadStore.records,
+      track
+    );
+    const downloadKey =
+      matchedRecord?.key ?? buildDownloadKey(track.source, track.id);
+    const uri = matchedRecord?.uri ?? downloadStore.getUri(downloadKey);
     if (uri) {
       return { url: Capacitor.convertFileSrc(uri), downloadKey };
     }
@@ -269,8 +274,12 @@ export function useAudioTrackLoader(
         const isOnline = navigator.onLine;
         const { url: localDownloadUrl, downloadKey } =
           await resolveLocalDownloadUrl({
-            trackId: currentTrackId || "",
-            source: currentTrackSource,
+            track: {
+              id: currentTrackId || "",
+              source: currentTrackSource,
+              name: currentTrack.name,
+              artist: currentTrack.artist,
+            },
           });
         const hasDownload = Boolean(localDownloadUrl);
 

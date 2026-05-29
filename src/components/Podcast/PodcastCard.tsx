@@ -23,15 +23,15 @@ export function PodcastCard({ rssSource }: PodcastCardProps) {
   return (
     <>
       <div
-        className="group flex flex-col gap-2.5 transition-all hover:translate-y-[-4px] relative"
+        className="group flex flex-col gap-2 transition-all hover:translate-y-[-4px] relative w-full"
         onClick={handleCardClick}
       >
-        <div className="relative aspect-square rounded-md overflow-hidden shadow-md ring-1 ring-black/5 hover:shadow-xl transition-shadow cursor-pointer">
+        <div className="relative aspect-square rounded-md overflow-hidden shadow-md ring-1 ring-black/5 hover:shadow-xl transition-shadow cursor-pointer w-full">
           <MusicCover
             src={rssSource.coverUrl || ""}
             alt={rssSource.name}
-            className="transition-transform duration-500 group-hover:scale-110"
-            fallbackIcon={<Podcast className="h-8 w-8 text-muted-foreground/50" />}
+            className="transition-transform duration-500 group-hover:scale-110 w-full"
+            fallbackIcon={<Podcast className="h-6 w-6 text-muted-foreground/50" />}
           />
           <div 
             className="absolute top-1 right-1 z-10 transition-opacity duration-200"
@@ -40,15 +40,15 @@ export function PodcastCard({ rssSource }: PodcastCardProps) {
              <Button
                variant="ghost"
                size="icon"
-               className="h-6 w-6 rounded-md bg-black/20 hover:bg-black/40 text-white backdrop-blur-sm"
+               className="h-5 w-5 rounded-md bg-black/20 hover:bg-black/40 text-white backdrop-blur-sm"
                onClick={() => setActionOpen(true)}
              >
-               <MoreHorizontal className="h-4 w-4" />
+               <MoreHorizontal className="h-3.5 w-3.5" />
              </Button>
           </div>
         </div>
-        <div className="px-0.5">
-          <h3 className="text-[13px] font-medium leading-snug line-clamp-2 text-foreground/80 group-hover:text-primary transition-colors cursor-pointer">
+        <div className="px-0.5 w-full overflow-hidden">
+          <h3 className="text-[12px] font-medium leading-snug line-clamp-2 text-foreground/80 group-hover:text-primary transition-colors cursor-pointer">
             {rssSource.name}
           </h3>
         </div>

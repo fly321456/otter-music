@@ -78,46 +78,46 @@ export function MinePage({ onSelectPlaylist }: MinePageProps) {
   };
 
   return (
-    <div className="p-5 pb-24">
-      <div className="flex gap-2 mb-6">
+    <div className="p-5 pb-24 w-full overflow-hidden">
+      <div className="flex gap-2 mb-6 w-full">
         <button
           onClick={() => navigate('/history')}
-          className="flex-1 flex flex-col items-center justify-center gap-2 p-4 rounded-2xl bg-card/70 hover:bg-card transition-all duration-300"
+          className="flex-1 flex flex-col items-center justify-center gap-2 p-4 rounded-2xl bg-card/70 hover:bg-card transition-all duration-300 min-w-0"
         >
-          <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center">
+          <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
             <History className="h-6 w-6 text-primary" />
           </div>
-          <span className="text-sm font-medium text-foreground">历史</span>
+          <span className="text-sm font-medium text-foreground text-center">历史</span>
         </button>
 
         <button
           onClick={() => navigate('/queue')}
-          className="flex-1 flex flex-col items-center justify-center gap-2 p-4 rounded-2xl bg-card/70 hover:bg-card transition-all duration-300"
+          className="flex-1 flex flex-col items-center justify-center gap-2 p-4 rounded-2xl bg-card/70 hover:bg-card transition-all duration-300 min-w-0"
         >
-          <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center">
+          <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
             <ListVideo className="h-6 w-6 text-primary" />
           </div>
-          <span className="text-sm font-medium text-foreground">列表</span>
+          <span className="text-sm font-medium text-foreground text-center">列表</span>
         </button>
 
         <button
           onClick={() => navigate('/local')}
-          className="flex-1 flex flex-col items-center justify-center gap-2 p-4 rounded-2xl bg-card/70 hover:bg-card transition-all duration-300"
+          className="flex-1 flex flex-col items-center justify-center gap-2 p-4 rounded-2xl bg-card/70 hover:bg-card transition-all duration-300 min-w-0"
         >
-          <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center">
+          <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
             <HardDriveDownload className="h-6 w-6 text-primary" />
           </div>
-          <span className="text-sm font-medium text-foreground">本地</span>
+          <span className="text-sm font-medium text-foreground text-center">本地</span>
         </button>
 
         <button
           onClick={() => navigate('/settings')}
-          className="flex-1 flex flex-col items-center justify-center gap-2 p-4 rounded-2xl bg-card/70 hover:bg-card transition-all duration-300"
+          className="flex-1 flex flex-col items-center justify-center gap-2 p-4 rounded-2xl bg-card/70 hover:bg-card transition-all duration-300 min-w-0"
         >
-          <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center">
+          <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
             <Settings className="h-6 w-6 text-primary" />
           </div>
-          <span className="text-sm font-medium text-foreground">设置</span>
+          <span className="text-sm font-medium text-foreground text-center">设置</span>
         </button>
       </div>
 
@@ -156,24 +156,24 @@ export function MinePage({ onSelectPlaylist }: MinePageProps) {
       </div>
 
       {activePlaylists.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-10 text-center">
-          <ListMusic className="h-10 w-10 text-muted-foreground/40 mb-2" />
+        <div className="flex flex-col items-center justify-center py-10 text-center w-full">
+          <ListMusic className="h-10 w-10 text-muted-foreground/30 mb-2 shrink-0" />
           <p className="text-muted-foreground text-sm">暂无歌单</p>
           <p className="text-muted-foreground/60 text-xs mt-1">点击"新建"创建你的第一个歌单</p>
         </div>
       ) : (
-        <div className="space-y-2">
+        <div className="space-y-2 w-full">
           {activePlaylists.map((playlist) => (
             <div
               key={playlist.id}
-              className="flex items-center gap-3 p-3 rounded-xl bg-card/50 hover:bg-card transition-colors cursor-pointer group"
+              className="flex items-center gap-3 p-3 rounded-xl bg-card/50 hover:bg-card transition-colors cursor-pointer group w-full overflow-hidden"
               onClick={() => onSelectPlaylist(playlist.id)}
             >
               <PlaylistCover
                 playlist={playlist}
                 className="h-11 w-11 rounded-lg bg-primary/10 shrink-0"
               />
-              <div className="flex-1 min-w-0">
+              <div className="flex-1 min-w-0 w-full overflow-hidden">
                 {editingPlaylistId === playlist.id ? (
                   <Input
                     autoFocus
@@ -188,15 +188,15 @@ export function MinePage({ onSelectPlaylist }: MinePageProps) {
                       }
                     }}
                     onBlur={() => handleRename(playlist.id)}
-                    className="h-7 text-sm"
+                    className="h-7 text-sm w-full"
                     onClick={(e) => e.stopPropagation()}
                   />
                 ) : (
                   <>
-                    <p className="font-medium text-foreground truncate">{playlist.name}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {/* TODO: 是否简化同步流程, 不再需要is_deleted，仅歌单级别is_deleted, 以最新版本的歌单为主  */}
-                      {playlist.tracks.filter((track) => track.is_deleted !== true).length} 首 · {format(playlist.createdAt, "yyyy-MM-dd")}
+                    <p className="font-medium text-foreground truncate w-full">{playlist.name}</p>
+                    <p className="text-xs text-muted-foreground truncate">
+                      {/* TODO: 是否简化同步流程, 不再需要 is_deleted，仅歌单级别 is_deleted，以最新版本的歌单为主  */}
+                      {playlist.tracks.filter((track) => track.is_deleted !== true).length} 首 • {format(playlist.createdAt, "yyyy-MM-dd")}
                     </p>
                   </>
                 )}

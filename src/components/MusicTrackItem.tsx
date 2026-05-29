@@ -1,6 +1,10 @@
 import { cn } from "@/lib/utils";
 import { buildDownloadKey, downloadMusicTrack } from "@/lib/utils/download";
+import {
+  hasDownloadedTrack,
+} from "@/lib/utils/download-records";
 import { useMusicStore } from "@/store/music-store";
+import { useLocalMusicStore } from "@/store/local-music-store";
 import {
   MusicTrack,
   MergedMusicTrack,
@@ -98,10 +102,16 @@ export function MusicTrackItem({
 
   // 按需读取下载状态（虚拟列表保证活跃 Item 极少，按需 selector 远比父组件全量 map 高效）
   const downloadKey = buildDownloadKey(track.source, track.id);
-  const isDownloadedFromStore = useDownloadStore(
-    (s) => !!s.records[downloadKey]
+  const downloadRecords = useDownloadStore((s) => s.records);
+  const localFiles = useLocalMusicStore((s) => s.files);
+  const isDownloadedFromStore = !!downloadRecords[downloadKey];
+  const isDownloadedByExactKey = hasDownloadedTrack(
+    downloadRecords,
+    localFiles,
+    track
   );
-  const isDownloadedFinal = isDownloaded ?? isDownloadedFromStore;
+  const isDownloadedFinal =
+    isDownloaded ?? (isDownloadedFromStore || isDownloadedByExactKey);
 
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isAddToPlaylistOpen, setIsAddToPlaylistOpen] = useState(false);
@@ -113,14 +123,14 @@ export function MusicTrackItem({
     <div
       style={style}
       className={cn(
-        "group grid gap-4 items-center px-4 py-2.5 transition-all text-sm cursor-pointer",
+        "group grid gap-3 items-center px-4 py-2.5 transition-all text-sm cursor-pointer w-full overflow-hidden",
         "grid-cols-[1.75rem_1fr_auto]",
         isSelected && showCheckbox ? "bg-primary/10" : "hover:bg-muted/50",
         className
       )}
     >
       <div
-        className="col-span-2 grid grid-cols-[1.75rem_1fr] gap-4 items-center"
+        className="col-span-2 grid grid-cols-[1.75rem_1fr] gap-3 items-center w-full min-w-0"
         onClick={showCheckbox ? onSelect : onPlay}
       >
         <div className="flex justify-center shrink-0">
@@ -151,14 +161,14 @@ export function MusicTrackItem({
           )}
         </div>
 
-        <div className="min-w-0 flex flex-col gap-0.5">
+        <div className="min-w-0 flex flex-col gap-0.5 w-full overflow-hidden">
           <div
             className={cn(
-              "font-medium flex items-center gap-1.5",
+              "font-medium flex items-center gap-1.5 w-full min-w-0",
               isCurrent && "text-primary"
             )}
           >
-            <span className="truncate" title={track.name}>
+            <span className="truncate flex-1" title={track.name}>
               {track.name}
             </span>
 

@@ -256,11 +256,18 @@ export async function getSongUrl(id: string, br: number = 999000, cookie: string
         logger.warn(`[NetEase] EAPI failed for ${realId}, falling back to WEAPI...`);
     }
 
-    return requestWeapi<{ data: { url: string, br: number, size: number }[] }>(
+    const weapiRes = await requestWeapi<{ data: { url: string, br: number, size: number }[] }>(
         `${BASE_URL}/weapi/song/enhance/player/url/v1`,
         { ids: `[${realId}]`, level, encodeType: 'flac', csrf_token: '' },
         finalCookie
     );
+    
+    const weapiTrackData = weapiRes.data?.data?.[0];
+    if (!weapiTrackData?.url) {
+        logger.error(`[NetEase] Both EAPI and WEAPI failed to get URL for ${realId}`);
+    }
+    
+    return weapiRes;
 }
 
 export const getQrKey = async (): Promise<string> => {

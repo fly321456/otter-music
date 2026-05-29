@@ -11,21 +11,21 @@ import {
 import { MusicSource, MusicTrack } from "@/types/music";
 import toast from "react-hot-toast";
 import { base64ToBlob } from "@/lib/utils/base64";
+import {
+  buildTrackExactKey,
+  findDownloadedRecordByTrack,
+  hasDownloadedTrack,
+} from "@/lib/utils/download-records";
 import { LocalMusicFile } from "@/plugins/local-music";
 import { useDownloadStore } from "@/store/download-store";
+import { useLocalMusicStore } from "@/store/local-music-store";
 import { useMusicStore } from "@/store/music-store";
 import { toastUtils } from "./toast";
 import { getProxyUrl, isProxyUrl } from "@/lib/api/config";
 import { logger } from "@/lib/logger";
 import { processBatchIO } from "@/lib/utils";
-import { embedMetadata } from "./id3-embed";
+import { embedMetadata, MAX_EMBED_SIZE } from "./id3-embed";
 
-/**
- * 获取当前正在播放的曲目 URL（如果匹配）
- * @param track 要下载的曲目
- * @param downloadQuality 下载音质
- * @returns 匹配且音质相同时返回 URL，否则返回 null
- */
 function getCurrentPlayingUrl(
   track: MusicTrack,
   downloadQuality: number
@@ -45,8 +45,6 @@ function getCurrentPlayingUrl(
   return state.currentAudioUrl;
 }
 
-/* ================= 主入口 ================= */
-
 export function buildDownloadKey(source: MusicSource, id: string) {
   return `${source}:${id}`;
 }
@@ -55,10 +53,23 @@ interface PerformDownloadOpts {
   skipMetadata?: boolean;
 }
 
-/**
- * 单首曲目下载核心逻辑
- * @param toastId 传入则展示详细进度（单曲模式）；不传则彻底静默（批量模式）
- */
+const NATIVE_BATCH_DOWNLOAD_CONCURRENCY = 1;
+const WEB_BATCH_DOWNLOAD_CONCURRENCY = 2;
+const NATIVE_METADATA_READ_LIMIT = MAX_EMBED_SIZE;
+const MAX_METADATA_EMBED_SIZE = 200 * 1024 * 1024;
+
+function getDownloadContext() {
+  return {
+    records: useDownloadStore.getState().records,
+    localFiles: useLocalMusicStore.getState().files,
+  };
+}
+
+function isTrackAlreadyDownloaded(track: MusicTrack) {
+  const { records, localFiles } = getDownloadContext();
+  return hasDownloadedTrack(records, localFiles, track);
+}
+
 async function performDownloadOne(
   track: MusicTrack,
   _br: number,
@@ -69,19 +80,22 @@ async function performDownloadOne(
   const isNative = Capacitor.isNativePlatform();
   const br = parseInt(useMusicStore.getState().downloadQuality) || 320;
 
-  if (isNative) {
-    const key = buildDownloadKey(track.source, track.id);
-    if (useDownloadStore.getState().hasRecord(key)) return;
+  if (isNative && isTrackAlreadyDownloaded(track)) {
+    logger.info("download", "Skip already-downloaded track", {
+      trackId: track.id,
+      source: track.source,
+      name: track.name,
+    });
+    return;
   }
 
-  // 尝试复用当前播放 URL
   let url = getCurrentPlayingUrl(track, br);
   const isReusedUrl = !!url;
 
   if (!url) {
     url = await MusicProviderFactory.getProvider(track.source).getUrl(track, br);
   }
-  // 音质降级重试：高音质无 URL 时逐级降级
+
   if (!url) {
     const fallbackQualities = [192, 128];
     for (const fallbackBr of fallbackQualities) {
@@ -105,7 +119,6 @@ async function performDownloadOne(
   try {
     await doDownload(url);
   } catch (err) {
-    // 如果是复用的 URL 失败，回退到重新获取
     if (isReusedUrl) {
       logger.warn("Reused URL download failed, falling back to getUrl...", err);
       const freshUrl = await MusicProviderFactory.getProvider(track.source).getUrl(track, br);
@@ -124,6 +137,9 @@ async function performDownloadOne(
 }
 
 export async function downloadMusicTrack(track: MusicTrack, br = 192) {
+  if (track.source !== "local" && isTrackAlreadyDownloaded(track)) {
+    return toastUtils.info("该歌曲已在本地存在，跳过下载");
+  }
   if (track.source === "local") {
     return toastUtils.info("本地音乐，无需下载");
   }
@@ -142,9 +158,6 @@ export async function downloadMusicTrack(track: MusicTrack, br = 192) {
   }
 }
 
-/**
- * 批量下载
- */
 export async function downloadMusicTrackBatch(tracks: MusicTrack[], br = 192) {
   const validTracks = tracks.filter((t) => t.source !== "local");
   const total = validTracks.length;
@@ -157,7 +170,6 @@ export async function downloadMusicTrackBatch(tracks: MusicTrack[], br = 192) {
   let failCount = 0;
   const toastId = toast.loading(`准备下载 0/${total}`);
 
-  // 节流 UI 更新，保证高并发下主线程顺畅，且最后一次必定刷新
   let lastProgressUpdate = 0;
   const updateProgress = (current: number, isLast = false) => {
     const now = Date.now();
@@ -166,6 +178,10 @@ export async function downloadMusicTrackBatch(tracks: MusicTrack[], br = 192) {
       toast.loading(`下载中 ${current}/${total}`, { id: toastId });
     }
   };
+
+  const concurrency = Capacitor.isNativePlatform()
+    ? NATIVE_BATCH_DOWNLOAD_CONCURRENCY
+    : WEB_BATCH_DOWNLOAD_CONCURRENCY;
 
   await processBatchIO(
     validTracks,
@@ -185,10 +201,9 @@ export async function downloadMusicTrackBatch(tracks: MusicTrack[], br = 192) {
       }
     },
     undefined,
-    3 // 保持并发数为 3
+    concurrency
   );
 
-  // 下载结果提示
   const successCount = total - failCount;
 
   const failMsg = `下载完成（成功 ${successCount} / 失败 ${failCount}）`;
@@ -198,8 +213,6 @@ export async function downloadMusicTrackBatch(tracks: MusicTrack[], br = 192) {
     ? toastUtils.warning(failMsg, { id: toastId, duration: 5000 })
     : toast.success(successMsg, { id: toastId, duration: 3000 });
 }
-
-/* ================= Native 下载 ================= */
 
 async function downloadNative(
   url: string,
@@ -214,10 +227,6 @@ async function downloadNative(
   await ensureDir(musicPath);
 
   const filePath = `${musicPath}/${fileName}`;
-  const fileUri = await Filesystem.getUri({
-    directory: STORAGE_CONFIG.BASE_DIR,
-    path: filePath,
-  });
 
   const listener = await FileTransfer.addListener(
     "progress",
@@ -229,15 +238,22 @@ async function downloadNative(
   );
 
   try {
+    const absolutePath = `/storage/emulated/0/${filePath}`;
+    const downloadPath = `file://${absolutePath}`;
+
     await FileTransfer.downloadFile({
       url,
-      path: fileUri.uri,
+      path: downloadPath,
     });
 
-    // 元数据嵌入
     if (!opts?.skipMetadata && (store.embedCover || store.embedLyric)) {
       await embedMetadataNative(filePath, track, toastId);
     }
+
+    const fileUri = await Filesystem.getUri({
+      directory: STORAGE_CONFIG.BASE_DIR,
+      path: filePath,
+    });
 
     const key = buildDownloadKey(track.source, track.id);
     await useDownloadStore.getState().addRecord(key, fileUri.uri);
@@ -254,6 +270,20 @@ async function embedMetadataNative(
   toastId?: string
 ) {
   try {
+    const statResult = await Filesystem.stat({
+      path: filePath,
+      directory: STORAGE_CONFIG.BASE_DIR,
+    });
+
+    if (statResult.size && statResult.size > MAX_METADATA_EMBED_SIZE) {
+      logger.warn(
+        "download",
+        `文件过大 (${(statResult.size / 1024 / 1024).toFixed(1)}MB)，跳过元数据嵌入`,
+        { trackName: track.name, filePath }
+      );
+      return;
+    }
+
     if (toastId) toast.loading("正在写入元数据...", { id: toastId });
 
     const readResult = await Filesystem.readFile({
@@ -290,8 +320,6 @@ async function blobToBase64(blob: Blob): Promise<string> {
   }
   return btoa(binary);
 }
-
-/* ================= Web 下载 ================= */
 
 async function downloadWeb(
   url: string,
@@ -358,8 +386,6 @@ async function applyMetadata(
   }
 }
 
-/* ================= 工具函数 ================= */
-
 export async function ensurePermission() {
   const { publicStorage } = await Filesystem.checkPermissions();
 
@@ -407,7 +433,6 @@ export function triggerBlobDownload(
   if (toastId) toast.success("下载完成", { id: toastId });
 }
 
-/* ================= 下载记录持久化 ================= */
 export async function saveDownloadRecordsToDisk(
   records: Record<string, string>
 ) {
@@ -456,30 +481,75 @@ export async function loadDownloadRecordsFromDisk(): Promise<Record<
 const LOCAL_ARTIST_SPLIT_RE = /[/、,，&＆;；|]/;
 const LOCAL_ARTIST_DOUBLE_SPACE_RE = /\s{2,}/;
 
-function isOtterMusicDownloadPath(localPath?: string | null) {
-  return !!localPath && localPath.includes(STORAGE_CONFIG.ROOT);
-}
-
 function getBasename(path: string) {
   const normalized = path.replace(/^file:\/\//, "");
   const parts = normalized.split(/[\\/]/).filter(Boolean);
   return parts.length ? parts[parts.length - 1] : "";
 }
 
-function getArtistFromLocalPath(localPath?: string | null) {
-  if (!localPath) return null;
-  const basename = getBasename(localPath);
-  if (!basename) return null;
-  const withoutExt = basename.replace(/\.[^/.]+$/, "");
-  const sepIndex = withoutExt.lastIndexOf(" - ");
-  if (sepIndex <= 0 || sepIndex >= withoutExt.length - 3) return null;
-  const artistPart = withoutExt.slice(sepIndex + 3).trim();
-  return artistPart || null;
+function isChineseChar(c: string): boolean {
+  const charCode = c.charCodeAt(0);
+  return (
+    (charCode >= 0x4e00 && charCode <= 0x9fff) ||
+    (charCode >= 0x3400 && charCode <= 0x4dbf) ||
+    (charCode >= 0x20000 && charCode <= 0x2a6df) ||
+    (charCode >= 0x2a700 && charCode <= 0x2b73f) ||
+    (charCode >= 0x2b740 && charCode <= 0x2b81f) ||
+    (charCode >= 0x2b820 && charCode <= 0x2ceaf) ||
+    (charCode >= 0xf900 && charCode <= 0xfaff) ||
+    (charCode >= 0x3300 && charCode <= 0x33ff) ||
+    (charCode >= 0xfe30 && charCode <= 0xfe4f) ||
+    (charCode >= 0xf000 && charCode <= 0xf0ff) ||
+    (charCode >= 0x2f800 && charCode <= 0x2fa1f)
+  );
 }
 
-/**
- * 本地文件转 MusicTrack
- */
+function isValidSeparatorPosition(name: string, sepIndex: number): boolean {
+  if (sepIndex <= 0 || sepIndex >= name.length - 3) {
+    return false;
+  }
+
+  const beforeDash = name[sepIndex - 1];
+  const afterDash = name[sepIndex + 3];
+
+  const validPrefixChars = ['）', ')', ']', '"', "'", '’'];
+  const validSuffixChars = ['（', '(', '[', '"', "'", '‘'];
+
+  const hasValidPrefix =
+    /[a-zA-Z0-9]/.test(beforeDash) ||
+    isChineseChar(beforeDash) ||
+    validPrefixChars.includes(beforeDash);
+
+  const hasValidSuffix =
+    /[a-zA-Z0-9]/.test(afterDash) ||
+    isChineseChar(afterDash) ||
+    validSuffixChars.includes(afterDash);
+
+  return hasValidPrefix && hasValidSuffix;
+}
+
+function parseFilenameFormat(filename: string): { name: string | null; artist: string | null } {
+  if (!filename) {
+    return { name: null, artist: null };
+  }
+
+  const withoutExt = filename.replace(/\.[^/.]+$/, "");
+  const sepIndex = withoutExt.lastIndexOf(" - ");
+
+  if (!isValidSeparatorPosition(withoutExt, sepIndex)) {
+    return { name: null, artist: null };
+  }
+
+  const name = withoutExt.slice(0, sepIndex).trim();
+  const artist = withoutExt.slice(sepIndex + 3).trim();
+
+  if (!name || !artist) {
+    return { name: null, artist: null };
+  }
+
+  return { name, artist };
+}
+
 export const convertToMusicTrack = (file: LocalMusicFile): MusicTrack => {
   let album = file.album;
 
@@ -487,27 +557,22 @@ export const convertToMusicTrack = (file: LocalMusicFile): MusicTrack => {
     album = "";
   }
 
-  const localPathArtist = getArtistFromLocalPath(file.localPath);
-  const otterPath = isOtterMusicDownloadPath(file.localPath);
+  let trackName = (file.name || "").trim();
   let artistStr = (file.artist || "").trim();
 
-  if (!artistStr && localPathArtist) {
-    artistStr = localPathArtist;
-  } else if (
-    otterPath &&
-    localPathArtist &&
-    !LOCAL_ARTIST_SPLIT_RE.test(artistStr) &&
-    (LOCAL_ARTIST_SPLIT_RE.test(localPathArtist) ||
-      LOCAL_ARTIST_DOUBLE_SPACE_RE.test(localPathArtist))
-  ) {
-    artistStr = localPathArtist;
+  const basename = getBasename(file.localPath);
+  const parsed = parseFilenameFormat(basename);
+
+  if (parsed.name && parsed.artist) {
+    trackName = parsed.name;
+    artistStr = parsed.artist;
   }
 
   let artistList: string[] = [];
   if (artistStr) {
     if (LOCAL_ARTIST_SPLIT_RE.test(artistStr)) {
       artistList = artistStr.split(LOCAL_ARTIST_SPLIT_RE);
-    } else if (otterPath && LOCAL_ARTIST_DOUBLE_SPACE_RE.test(artistStr)) {
+    } else if (LOCAL_ARTIST_DOUBLE_SPACE_RE.test(artistStr)) {
       artistList = artistStr.split(LOCAL_ARTIST_DOUBLE_SPACE_RE);
     } else {
       artistList = [artistStr];
@@ -521,7 +586,7 @@ export const convertToMusicTrack = (file: LocalMusicFile): MusicTrack => {
 
   return {
     id: `local-${file.id}`,
-    name: file.name || "未知歌曲",
+    name: trackName || "未知歌曲",
     artist: artistList,
     album: album || "",
     pic_id: file.localPath,

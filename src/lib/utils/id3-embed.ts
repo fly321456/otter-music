@@ -6,11 +6,10 @@ import { musicApi } from "@/lib/music-api";
 import { logger } from "@/lib/logger";
 import type { MusicTrack } from "@/types/music";
 
-export const MAX_EMBED_SIZE = 50 * 1024 * 1024; // 50MB
+export const MAX_EMBED_SIZE = 200 * 1024 * 1024; // 200MB
 
 interface EmbedResult {
   blob: Blob;
-  arrayBuffer: ArrayBuffer;
   coverEmbedded: boolean;
   lyricEmbedded: boolean;
 }
@@ -28,7 +27,6 @@ export async function embedMetadata(
   if (!embedCover && !embedLyric) {
     return {
       blob: mp3Blob,
-      arrayBuffer: await mp3Blob.arrayBuffer(),
       coverEmbedded: false,
       lyricEmbedded: false,
     };
@@ -38,7 +36,6 @@ export async function embedMetadata(
     logger.warn("id3-embed", `文件过大 (${(mp3Blob.size / 1024 / 1024).toFixed(1)}MB)，跳过元数据嵌入`);
     return {
       blob: mp3Blob,
-      arrayBuffer: await mp3Blob.arrayBuffer(),
       coverEmbedded: false,
       lyricEmbedded: false,
     };
@@ -83,7 +80,6 @@ export async function embedMetadata(
 
   return {
     blob: writer.getBlob(),
-    arrayBuffer: writer.getBlob().size ? await writer.getBlob().arrayBuffer() : new ArrayBuffer(0),
     coverEmbedded,
     lyricEmbedded,
   };

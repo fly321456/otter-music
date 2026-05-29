@@ -177,6 +177,7 @@
 @layer base {
   * {
     @apply border-border outline-ring/50;
+    box-sizing: border-box;
   }
 
   html {
@@ -186,6 +187,13 @@
     scrollbar-color: var(--border) transparent;
     /* 暗夜模式 */
     @apply dark:[scrollbar-color:var(--muted-foreground)_transparent];
+  }
+
+  html,
+  body {
+    width: 100%;
+    max-width: 100vw;
+    overflow-x: hidden;
   }
 
   html::-webkit-scrollbar {

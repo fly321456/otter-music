@@ -57,8 +57,8 @@ export interface SystemDarkModeResult {
 }
 
 export interface LocalMusicPlugin {
-  scanLocalMusic(): Promise<ScanResult>;
-  scanAllStorage(): Promise<ScanResult>;
+  scanLocalMusic(options?: { downloadDirectory?: string }): Promise<ScanResult>;
+  scanAllStorage(options?: { downloadDirectory?: string }): Promise<ScanResult>;
   getLocalFileUrl(options: { localPath: string }): Promise<LocalFileUrlResult>;
   getEmbeddedCover(options: {
     localPath: string;

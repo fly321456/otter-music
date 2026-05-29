@@ -218,16 +218,16 @@ export function PlaylistMarket() {
           <MineSection />
         ) : activeCategory === "播客" ? (
           <div className="p-4 pb-24">
-            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 gap-x-3 gap-y-4">
+            <div className="grid grid-cols-2 max-sm:grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-x-2.5 gap-y-3 w-full">
               <div
-                className="group flex flex-col gap-2.5 transition-all hover:translate-y-[-4px] relative cursor-pointer"
+                className="group flex flex-col gap-2 transition-all hover:translate-y-[-4px] relative cursor-pointer w-full"
                 onClick={() => setIsAddPodcastOpen(true)}
               >
-                <div className="relative aspect-square rounded-md overflow-hidden border-2 border-dashed border-muted-foreground/20 hover:border-primary/50 hover:bg-muted/50 transition-colors flex items-center justify-center bg-muted/20">
-                  <Plus className="w-8 h-8 text-muted-foreground/50 group-hover:text-primary transition-colors" />
+                <div className="relative aspect-square rounded-md overflow-hidden border-2 border-dashed border-muted-foreground/20 hover:border-primary/50 hover:bg-muted/50 transition-colors flex items-center justify-center bg-muted/20 w-full">
+                  <Plus className="w-6 h-6 text-muted-foreground/50 group-hover:text-primary transition-colors" />
                 </div>
-                <div className="px-0.5 text-center">
-                  <h3 className="text-[13px] font-medium leading-snug text-muted-foreground group-hover:text-primary transition-colors">
+                <div className="px-0.5 text-center w-full overflow-hidden">
+                  <h3 className="text-[12px] font-medium leading-snug text-muted-foreground group-hover:text-primary transition-colors">
                     添加播客
                   </h3>
                 </div>
