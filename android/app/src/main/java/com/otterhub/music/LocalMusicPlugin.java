@@ -521,7 +521,10 @@ public class LocalMusicPlugin extends Plugin {
                 Uri contentUri = Uri.parse(localPath);
                 deleted = tryDelete(() -> resolver.delete(contentUri, null, null) > 0);
             } else {
-                deleted = tryDelete(() -> resolver.delete(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, MediaStore.Audio.Media.DATA + "=?", new String[]{localPath}) > 0);
+                Uri mediaUri = findMediaStoreUri(localPath);
+                if (mediaUri != null) {
+                    deleted = tryDelete(() -> resolver.delete(mediaUri, null, null) > 0);
+                }
                 if (!deleted) {
                     File file = new File(localPath);
                     deleted = !file.exists() || file.delete();
@@ -533,6 +536,26 @@ public class LocalMusicPlugin extends Plugin {
         } catch (Exception e) {
             resolveError(call, "Error: " + e.getMessage());
         }
+    }
+
+    private Uri findMediaStoreUri(String filePath) {
+        try {
+            ContentResolver resolver = getContext().getContentResolver();
+            Uri musicUri = MediaStore.Audio.Media.EXTERNAL_CONTENT_URI;
+            String[] projection = { MediaStore.Audio.Media._ID };
+            String selection = MediaStore.Audio.Media.DATA + "=?";
+            String[] selectionArgs = { filePath };
+
+            try (Cursor cursor = resolver.query(musicUri, projection, selection, selectionArgs, null)) {
+                if (cursor != null && cursor.moveToFirst()) {
+                    long id = cursor.getLong(0);
+                    return ContentUris.withAppendedId(musicUri, id);
+                }
+            }
+        } catch (Exception e) {
+            android.util.Log.w("LocalMusicPlugin", "Failed to find MediaStore URI for: " + filePath);
+        }
+        return null;
     }
 
     private boolean isSystemDirectory(File dir) {
