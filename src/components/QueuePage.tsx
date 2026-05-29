@@ -1,9 +1,11 @@
 "use client";
 
+import { useState } from "react";
 import { Trash2, ListVideo } from "lucide-react";
 import { MusicPlaylistView } from "./MusicPlaylistView";
 import { MusicTrack } from "@/types/music";
 import { Button } from "./ui/button";
+import { ConfirmDrawer } from "./ui/confirm-drawer";
 import { PageLayout } from "./PageLayout";
 
 interface QueuePageProps {
@@ -25,16 +27,14 @@ export function QueuePage({
   onClear,
   onBack,
 }: QueuePageProps) {
+  const [clearConfirmOpen, setClearConfirmOpen] = useState(false);
+
   const clearAction = queue.length > 0 && (
     <Button
       variant="ghost"
       size="sm"
       className="text-destructive hover:text-destructive hover:bg-destructive/10"
-      onClick={() => {
-        if (confirm("确定清空播放列表吗？")) {
-          onClear();
-        }
-      }}
+      onClick={() => setClearConfirmOpen(true)}
     >
       <Trash2 className="h-4 w-4" />
     </Button>
@@ -50,7 +50,16 @@ export function QueuePage({
       onRemove={onRemove}
       currentTrackId={currentTrackId}
       isPlaying={isPlaying}
-    />
+      />
+
+      <ConfirmDrawer
+        open={clearConfirmOpen}
+        onOpenChange={setClearConfirmOpen}
+        title="确定清空播放列表吗？"
+        onConfirm={onClear}
+        destructive
+        confirmLabel="清空"
+      />
     </PageLayout>
   );
 }

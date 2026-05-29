@@ -8,6 +8,7 @@ import {
   DrawerDescription,
 } from "@/components/ui/drawer";
 import { Button } from "@/components/ui/button";
+import { ConfirmDrawer } from "@/components/ui/confirm-drawer";
 import { Textarea } from "@/components/ui/textarea";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { SettingItem } from "./SettingItem";
@@ -35,6 +36,7 @@ type LoginMode = "qr" | "cookie";
 export function NeteaseLogin() {
   const { user, setLogin, logout } = useNeteaseStore();
   const [showDialog, setShowDialog] = useState(false);
+  const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [loginMode, setLoginMode] = useState<LoginMode>("qr");
   const [cookieInput, setCookieInput] = useState("");
@@ -178,11 +180,11 @@ export function NeteaseLogin() {
   };
 
   const handleLogout = () => {
-    if (!window.confirm("确定要退出网易云登录吗？")) return;
+    setLogoutConfirmOpen(true);
+  };
 
+  const confirmLogout = () => {
     logout();
-    // localStorage.removeItem(NETEASE_COOKIE_KEY);
-    // localStorage.removeItem("cookie:netease");
     toast.success("已退出登录");
   };
 
@@ -351,6 +353,15 @@ export function NeteaseLogin() {
           </div>
         </DrawerContent>
       </Drawer>
+
+      <ConfirmDrawer
+        open={logoutConfirmOpen}
+        onOpenChange={setLogoutConfirmOpen}
+        title="确定要退出网易云登录吗？"
+        onConfirm={confirmLogout}
+        destructive
+        confirmLabel="退出登录"
+      />
     </>
   );
 }

@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { Lock, LogOut, Plus, RefreshCw, Trash2, Copy, Check, KeyRound, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { ConfirmDrawer } from "@/components/ui/confirm-drawer";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import {
@@ -146,6 +147,7 @@ function KeyManager({ onLogout }: KeyManagerProps) {
   const [creating, setCreating] = useState(false);
   const [newKey, setNewKey] = useState("");
   const [deletingKey, setDeletingKey] = useState<string | null>(null);
+  const [deleteConfirmKey, setDeleteConfirmKey] = useState<string | null>(null);
 
   const loadKeys = useCallback(async () => {
     setLoading(true);
@@ -178,15 +180,20 @@ function KeyManager({ onLogout }: KeyManagerProps) {
   };
 
   const handleDelete = async (key: string) => {
-    if (!confirm(`确认删除 Key：${key}？\n此操作不可恢复，该 Key 关联的同步数据将被永久删除。`)) return;
-    setDeletingKey(key);
+    setDeleteConfirmKey(key);
+  };
+
+  const confirmDeleteKey = async () => {
+    if (!deleteConfirmKey) return;
+    setDeletingKey(deleteConfirmKey);
     try {
-      await adminDeleteKey(key);
-      setKeys((prev) => prev.filter((k) => k.key !== key));
+      await adminDeleteKey(deleteConfirmKey);
+      setKeys((prev) => prev.filter((k) => k.key !== deleteConfirmKey));
     } catch (err) {
       setError(err instanceof Error ? err.message : "删除失败");
     } finally {
       setDeletingKey(null);
+      setDeleteConfirmKey(null);
     }
   };
 
@@ -365,6 +372,18 @@ function KeyManager({ onLogout }: KeyManagerProps) {
           </CardContent>
         </Card>
       </main>
+
+      <ConfirmDrawer
+        open={deleteConfirmKey !== null}
+        onOpenChange={(open) => {
+          if (!open) setDeleteConfirmKey(null);
+        }}
+        title="确认删除 Key？"
+        description={`此操作不可恢复，该 Key 关联的同步数据将被永久删除。${deleteConfirmKey ? ` Key: ${deleteConfirmKey}` : ""}`}
+        onConfirm={confirmDeleteKey}
+        destructive
+        confirmLabel="删除"
+      />
     </div>
   );
 }

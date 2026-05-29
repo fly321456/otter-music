@@ -33,6 +33,7 @@ import {
 } from "@/store/music-store";
 import { useShallow } from "zustand/react/shallow";
 import toast from "react-hot-toast";
+import { ConfirmDrawer } from "@/components/ui/confirm-drawer";
 import { ColorExtractor } from "react-color-extractor";
 import { pickBestColor } from "@/lib/utils/color";
 
@@ -166,6 +167,7 @@ export function FullScreenPlayer({
   const [showLyrics, setShowLyrics] = useState(false);
   const [moreDrawerOpen, setMoreDrawerOpen] = useState(false);
   const [isAddToPlaylistOpen, setIsAddToPlaylistOpen] = useState(false);
+  const [clearConfirmOpen, setClearConfirmOpen] = useState(false);
 
   const [colorInfo, setColorInfo] = useState<{
     coverUrl: string | null;
@@ -214,10 +216,7 @@ export function FullScreenPlayer({
   }, []);
 
   const handleClearQueue = () => {
-    if (confirm("确定要清空播放列表吗？")) {
-      clearQueue();
-      toast.success("播放列表已清空");
-    }
+    setClearConfirmOpen(true);
   };
 
   const handleRemoveFromQueue = (track: MusicTrack) => {
@@ -463,6 +462,17 @@ export function FullScreenPlayer({
               <ListVideo className="h-5 w-5" />
             </Button>
           }
+        />
+        <ConfirmDrawer
+          open={clearConfirmOpen}
+          onOpenChange={setClearConfirmOpen}
+          title="确定要清空播放列表吗？"
+          onConfirm={() => {
+            clearQueue();
+            toast.success("播放列表已清空");
+          }}
+          destructive
+          confirmLabel="清空"
         />
       </div>
     </div>,

@@ -1,4 +1,5 @@
 import { Button } from "@/components/ui/button";
+import { ConfirmDrawer } from "@/components/ui/confirm-drawer";
 import { Play, Search, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
 import { MusicTrackList } from "./MusicTrackList";
 import { Input } from "@/components/ui/input";
@@ -82,6 +83,7 @@ export function MusicPlaylistView({
 }: MusicPlaylistViewProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [isCoverDialogOpen, setIsCoverDialogOpen] = useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [isAddByUrlOpen, setIsAddByUrlOpen] = useState(false);
   const [coverUrlInput, setCoverUrlInput] = useState("");
   const [dedupeSelectedIds, setDedupeSelectedIds] = useState<
@@ -272,11 +274,7 @@ export function MusicPlaylistView({
                 onExport={() => exportPlaylist(title, tracks)}
                 onDelete={
                   onDelete
-                    ? () => {
-                        if (confirm(`确定删除歌单「${title}」吗？`)) {
-                          onDelete(playlistId);
-                        }
-                      }
+                    ? () => setDeleteConfirmOpen(true)
                     : undefined
                 }
                 onSetCover={handleSetCover}
@@ -444,6 +442,15 @@ export function MusicPlaylistView({
           </DrawerFooter>
         </DrawerContent>
       </Drawer>
+
+      <ConfirmDrawer
+        open={deleteConfirmOpen}
+        onOpenChange={setDeleteConfirmOpen}
+        title={`确定删除歌单「${title}」吗？`}
+        onConfirm={() => onDelete?.(playlistId!)}
+        destructive
+        confirmLabel="删除"
+      />
 
       <AddByUrlDrawer
         isOpen={isAddByUrlOpen}

@@ -3,6 +3,7 @@
 import { useState, useRef } from "react";
 import { Trash2, RefreshCw } from "lucide-react";
 import { Button } from "../ui/button";
+import { ConfirmDrawer } from "../ui/confirm-drawer";
 import {
   Drawer,
   DrawerContent,
@@ -19,6 +20,8 @@ export function SyncConfig() {
   const { syncKey, lastSyncTime, setSyncKey, clearSyncConfig } = useSyncStore();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [inputKey, setInputKey] = useState("");
+  const [overwriteConfirmOpen, setOverwriteConfirmOpen] = useState(false);
+  const [clearConfirmOpen, setClearConfirmOpen] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const formatLastSyncTime = (timestamp: number) => {
@@ -38,7 +41,11 @@ export function SyncConfig() {
   };
 
   const handleConfirm = () => {
-    if (!confirm("确认覆盖当前配置？")) return;
+    if (!inputKey.trim()) return;
+    setOverwriteConfirmOpen(true);
+  };
+
+  const confirmOverwrite = () => {
     if (inputKey.trim()) {
       setSyncKey(inputKey.trim());
       setInputKey("");
@@ -47,7 +54,10 @@ export function SyncConfig() {
   };
 
   const handleClear = () => {
-    if (!confirm("确认清除当前配置吗？")) return;
+    setClearConfirmOpen(true);
+  };
+
+  const confirmClear = () => {
     clearSyncConfig();
     setDialogOpen(false);
   };
@@ -113,6 +123,24 @@ export function SyncConfig() {
           </DrawerFooter>
         </DrawerContent>
       </Drawer>
+
+      <ConfirmDrawer
+        open={overwriteConfirmOpen}
+        onOpenChange={setOverwriteConfirmOpen}
+        title="确认覆盖当前配置？"
+        onConfirm={confirmOverwrite}
+        destructive
+        confirmLabel="覆盖"
+      />
+
+      <ConfirmDrawer
+        open={clearConfirmOpen}
+        onOpenChange={setClearConfirmOpen}
+        title="确认清除当前配置吗？"
+        onConfirm={confirmClear}
+        destructive
+        confirmLabel="清除"
+      />
     </>
   );
 }

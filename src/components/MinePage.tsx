@@ -16,6 +16,7 @@ import {
 import { Input } from "./ui/input";
 import { format } from "date-fns";
 import toast from "react-hot-toast";
+import { ConfirmDrawer } from "./ui/confirm-drawer";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -47,6 +48,7 @@ export function MinePage({ onSelectPlaylist }: MinePageProps) {
   const [isImportOpen, setIsImportOpen] = useState(false);
   const [editingPlaylistId, setEditingPlaylistId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState("");
+  const [deleteConfirmPlaylistId, setDeleteConfirmPlaylistId] = useState<string | null>(null);
 
   const handleCreatePlaylist = () => {
     if (!newPlaylistName.trim()) {
@@ -71,10 +73,7 @@ export function MinePage({ onSelectPlaylist }: MinePageProps) {
   };
 
   const handleDelete = (playlistId: string) => {
-    if (confirm("确定要删除这个歌单吗？")) {
-      deletePlaylist(playlistId);
-      toast.success("歌单已删除");
-    }
+    setDeleteConfirmPlaylistId(playlistId);
   };
 
   return (
@@ -237,6 +236,22 @@ export function MinePage({ onSelectPlaylist }: MinePageProps) {
           ))}
         </div>
       )}
+
+      <ConfirmDrawer
+        open={deleteConfirmPlaylistId !== null}
+        onOpenChange={(open) => {
+          if (!open) setDeleteConfirmPlaylistId(null);
+        }}
+        title="确定要删除这个歌单吗？"
+        onConfirm={() => {
+          if (deleteConfirmPlaylistId) {
+            deletePlaylist(deleteConfirmPlaylistId);
+            toast.success("歌单已删除");
+          }
+        }}
+        destructive
+        confirmLabel="删除"
+      />
     </div>
   );
 }

@@ -33,6 +33,7 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { Button } from "@/components/ui/button";
+import { ConfirmDrawer } from "@/components/ui/confirm-drawer";
 import {
   ListChecks,
   Plus,
@@ -143,6 +144,7 @@ export function MusicTrackList({
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [activeId, setActiveId] = useState<string | null>(null);
   const [isAddToPlaylistOpen, setIsAddToPlaylistOpen] = useState(false);
+  const [batchRemoveConfirmOpen, setBatchRemoveConfirmOpen] = useState(false);
   const internalRef = useRef<HTMLDivElement | null>(null);
 
   const sensors = useSensors(
@@ -244,10 +246,14 @@ export function MusicTrackList({
     resetSelection();
   };
 
+  const handleBatchRemoveClick = () => {
+    if (!onRemove && !onBatchRemove) return;
+    setBatchRemoveConfirmOpen(true);
+  };
+
   const handleBatchRemove = async () => {
     if (!onRemove && !onBatchRemove) return;
     const count = selectedIds.size;
-    if (!confirm(`确定${removeLabel}选中的 ${count} 首歌曲吗？`)) return;
 
     const selected = getSelectedTracks();
     if (onBatchRemove) {
@@ -386,7 +392,7 @@ export function MusicTrackList({
                       <div className="border-t my-1" />
                       <div
                         className="flex items-center px-2 py-1.5 text-xs rounded-sm hover:bg-accent cursor-pointer text-destructive"
-                        onClick={handleBatchRemove}
+                        onClick={handleBatchRemoveClick}
                       >
                         <Trash2 className="mr-2 h-3.5 w-3.5" /> {removeLabel}
                       </div>
@@ -525,6 +531,15 @@ export function MusicTrackList({
             : null}
         </DragOverlay>
       </DndContext>
+
+      <ConfirmDrawer
+        open={batchRemoveConfirmOpen}
+        onOpenChange={setBatchRemoveConfirmOpen}
+        title={`确定${removeLabel}选中的 ${selectedIds.size} 首歌曲吗？`}
+        onConfirm={handleBatchRemove}
+        destructive
+        confirmLabel={removeLabel}
+      />
 
       <AddToPlaylistDrawer
         open={isAddToPlaylistOpen}

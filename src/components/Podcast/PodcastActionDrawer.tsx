@@ -1,9 +1,11 @@
+import { useState } from "react";
 import {
   Drawer,
   DrawerContent,
   DrawerTitle,
 } from "@/components/ui/drawer";
 import { Button } from "@/components/ui/button";
+import { ConfirmDrawer } from "@/components/ui/confirm-drawer";
 import { usePodcastStore } from "@/store/podcast-store";
 import type { PodcastRssSource } from "@/types/podcast";
 import toast from "react-hot-toast";
@@ -57,15 +59,20 @@ export function PodcastActionDrawer({
     }
   };
 
+  const [unsubConfirmOpen, setUnsubConfirmOpen] = useState(false);
+
   const handleUnsubscribe = () => {
-    if (confirm(`确定要取消订阅 "${rss.name}" 吗？`)) {
-      removeRssSource(rss.id);
-      toast.success("已取消订阅");
-      onOpenChange(false);
-    }
+    setUnsubConfirmOpen(true);
+  };
+
+  const confirmUnsubscribe = () => {
+    removeRssSource(rss.id);
+    toast.success("已取消订阅");
+    onOpenChange(false);
   };
 
   return (
+    <>
     <Drawer open={open} onOpenChange={onOpenChange}>
       <DrawerContent>
         <DrawerTitle className="sr-only">{rss.name}</DrawerTitle>
@@ -116,5 +123,15 @@ export function PodcastActionDrawer({
         </div>
       </DrawerContent>
     </Drawer>
+
+    <ConfirmDrawer
+      open={unsubConfirmOpen}
+      onOpenChange={setUnsubConfirmOpen}
+      title={`确定要取消订阅 "${rss.name}" 吗？`}
+      onConfirm={confirmUnsubscribe}
+      destructive
+      confirmLabel="取消订阅"
+    />
+    </>
   );
 }

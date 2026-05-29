@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Trash2, X, Maximize2, Dices } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { ConfirmDrawer } from "@/components/ui/confirm-drawer";
 import {
   Drawer,
   DrawerContent,
@@ -50,10 +51,12 @@ function QueueTrackItem({
   itemRef,
 }: QueueTrackItemProps) {
   const coverUrl = useMusicCover(track);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
 
   const handleRemove = (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (isCurrent && !confirm(`确定删除《${track.name}》吗？`)) {
+    if (isCurrent) {
+      setDeleteConfirmOpen(true);
       return;
     }
     onRemove();
@@ -117,6 +120,14 @@ function QueueTrackItem({
         >
           <X className="h-5 w-5" />
         </button>
+        <ConfirmDrawer
+          open={deleteConfirmOpen}
+          onOpenChange={setDeleteConfirmOpen}
+          title={`确定删除《${track.name}》吗？`}
+          onConfirm={onRemove}
+          destructive
+          confirmLabel="删除"
+        />
       </div>
     </div>
   );
@@ -142,6 +153,7 @@ export function PlayerQueueDrawer({
     onOpenChange?.(open);
   }, [open, onOpenChange]);
   const [activeTab, setActiveTab] = useState<"queue" | "history">("queue");
+  const [clearHistoryConfirmOpen, setClearHistoryConfirmOpen] = useState(false);
   const { history, removeFromHistory, clearHistory } = useHistoryStore();
   const scrollRef = useRef<HTMLDivElement>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
@@ -175,6 +187,7 @@ export function PlayerQueueDrawer({
   };
 
   return (
+    <>
     <Drawer open={open} onOpenChange={setOpen}>
       <DrawerTrigger asChild>{trigger}</DrawerTrigger>
       <DrawerContent
@@ -249,11 +262,7 @@ export function PlayerQueueDrawer({
                 onClick={
                   activeTab === "queue"
                     ? onClear
-                    : () => {
-                        if (confirm("确定清空播放历史吗？")) {
-                          clearHistory();
-                        }
-                      }
+                    : () => setClearHistoryConfirmOpen(true)
                 }
                 title={activeTab === "queue" ? "清空播放列表" : "清空播放历史"}
               >
@@ -301,6 +310,18 @@ export function PlayerQueueDrawer({
           </ScrollArea>
         </div>
       </DrawerContent>
-    </Drawer>
+      </Drawer>
+
+      <ConfirmDrawer
+        open={clearHistoryConfirmOpen}
+        onOpenChange={setClearHistoryConfirmOpen}
+        title="确定清空播放历史吗？"
+        onConfirm={() => {
+          clearHistory();
+        }}
+        destructive
+        confirmLabel="清空"
+      />
+    </>
   );
-}
+  }

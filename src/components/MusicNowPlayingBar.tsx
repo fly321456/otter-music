@@ -6,8 +6,9 @@ import { useShallow } from "zustand/react/shallow";
 import { useMusicCover } from "@/hooks/useMusicCover";
 import { PlayerQueueDrawer } from "./PlayerQueueDrawer";
 import { MusicCover } from "./MusicCover";
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 import toast from "react-hot-toast";
+import { ConfirmDrawer } from "@/components/ui/confirm-drawer";
 import { cn } from "@/lib/utils";
 import type { MusicTrack } from "@/types/music";
 
@@ -60,11 +61,10 @@ export function MusicNowPlayingBar({
     [setCurrentIndexAndPlay]
   );
 
+  const [clearConfirmOpen, setClearConfirmOpen] = useState(false);
+
   const handleClearQueue = () => {
-    if (confirm("确定要清空播放列表吗？")) {
-      clearQueue();
-      toast.success("播放列表已清空");
-    }
+    setClearConfirmOpen(true);
   };
 
   const handleRemoveFromQueue = useCallback(
@@ -223,6 +223,17 @@ export function MusicNowPlayingBar({
               />
             </button>
           }
+        />
+        <ConfirmDrawer
+          open={clearConfirmOpen}
+          onOpenChange={setClearConfirmOpen}
+          title="确定要清空播放列表吗？"
+          onConfirm={() => {
+            clearQueue();
+            toast.success("播放列表已清空");
+          }}
+          destructive
+          confirmLabel="清空"
         />
       </div>
     </div>

@@ -1,7 +1,8 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { PageLayout } from "@/components/PageLayout";
 import { MusicTrackList } from "@/components/MusicTrackList";
+import { ConfirmDrawer } from "@/components/ui/confirm-drawer";
 import { 
   getPlaylistDetail, getArtist, getAlbum, getArtistSongs, 
   convertSongToMusicTrack, toggleSubAlbum, getAlbumDynamicDetail,
@@ -144,13 +145,10 @@ export function NeteaseDetail({
   };
 
   // 处理专辑的收藏逻辑
-  const handleToggleAlbumSub = async () => {
-    if (!id || !cookie || type !== "album" || !detail) return;
-    const shouldSub = !detail.sub;
-    
-    // 取消收藏时增加二次确认
-    if (!shouldSub && !confirm("确定不再收藏吗？")) return;
+  const [unsubConfirmOpen, setUnsubConfirmOpen] = useState(false);
 
+  const doToggleSub = useCallback(async (shouldSub: boolean) => {
+    if (!id || !cookie || !detail) return;
     try {
       let success = false;
       let msg = "";
@@ -184,6 +182,19 @@ export function NeteaseDetail({
         shouldSub,
       });
     }
+  }, [id, cookie, detail, toggleAlbumInSession]);
+
+  const handleToggleAlbumSub = async () => {
+    if (!id || !cookie || type !== "album" || !detail) return;
+    const shouldSub = !detail.sub;
+    
+    // 取消收藏时增加二次确认
+    if (!shouldSub) {
+      setUnsubConfirmOpen(true);
+      return;
+    }
+    
+    await doToggleSub(true);
   };
 
   const handleLoadMore = async () => {
@@ -359,6 +370,15 @@ export function NeteaseDetail({
       
       <ArtistAlbumSheet 
         artistId={id} isOpen={isAlbumSheetOpen} onOpenChange={setIsAlbumSheetOpen} artistName={detail?.name} albumCount={detail?.albumCount}
+      />
+
+      <ConfirmDrawer
+        open={unsubConfirmOpen}
+        onOpenChange={setUnsubConfirmOpen}
+        title="确定不再收藏吗？"
+        onConfirm={() => doToggleSub(false)}
+        destructive
+        confirmLabel="取消收藏"
       />
     </PageLayout>
   );

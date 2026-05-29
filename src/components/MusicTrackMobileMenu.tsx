@@ -19,6 +19,7 @@ import {
   Link2,
 } from "lucide-react";
 import { ReactNode, useState } from "react";
+import { ConfirmDrawer } from "@/components/ui/confirm-drawer";
 import { MusicCover } from "./MusicCover";
 import { useMusicCover } from "@/hooks/useMusicCover";
 import { MusicTrack, SearchIntent } from "@/types/music";
@@ -92,6 +93,7 @@ export function MusicTrackMobileMenu({
   const navigate = useNavigate();
   const [showArtistSelection, setShowArtistSelection] = useState(false);
   const [showComments, setShowComments] = useState(false);
+  const [removeConfirmOpen, setRemoveConfirmOpen] = useState(false);
 
   // Zustand Store
   const setSearchQuery = useMusicStore((s) => s.setSearchQuery);
@@ -317,11 +319,10 @@ export function MusicTrackMobileMenu({
                 className="text-destructive hover:text-destructive"
                 onClick={() => {
                   onOpenChange(false);
-                  if (
-                    !confirmRemove ||
-                    window.confirm(`确定${removeLabel}《${track.name}》吗？`)
-                  ) {
+                  if (!confirmRemove) {
                     onRemove();
+                  } else {
+                    setRemoveConfirmOpen(true);
                   }
                 }}
               >
@@ -363,6 +364,14 @@ export function MusicTrackMobileMenu({
           </div>
         </DialogContent>
       </Dialog>
+      <ConfirmDrawer
+        open={removeConfirmOpen}
+        onOpenChange={setRemoveConfirmOpen}
+        title={`确定${removeLabel}《${track.name}》吗？`}
+        onConfirm={() => onRemove?.()}
+        destructive
+        confirmLabel={removeLabel}
+      />
       <MusicCommentsDrawer
         track={track}
         open={showComments}

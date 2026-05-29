@@ -1,6 +1,7 @@
 import { useMusicStore } from "@/store/music-store";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
+import { ConfirmDrawer } from "@/components/ui/confirm-drawer";
 import { SettingItem } from "./SettingItem";
 import { HardDrive, Trash2 } from "lucide-react";
 import { useState, useEffect } from "react";
@@ -16,6 +17,7 @@ export function StreamCacheSetting() {
   const { enableStreamCache, setEnableStreamCache } = useMusicStore();
   const [expanded, setExpanded] = useState(false);
   const [stats, setStats] = useState({ entryCount: 0, approxSize: 0 });
+  const [clearCacheConfirmOpen, setClearCacheConfirmOpen] = useState(false);
 
   useEffect(() => {
     if (expanded) {
@@ -29,6 +31,7 @@ export function StreamCacheSetting() {
   }, [expanded]);
 
   return (
+    <>
     <SettingItem
       icon={HardDrive}
       title="边听边缓存"
@@ -69,13 +72,7 @@ export function StreamCacheSetting() {
             disabled={stats.entryCount === 0}
             onClick={async (e) => {
               e.stopPropagation();
-              if (
-                window.confirm("确定要清空所有音频缓存吗？此操作不可恢复。")
-              ) {
-                await clearAudioCache();
-                setStats({ entryCount: 0, approxSize: 0 });
-                toastUtils.info("音频缓存已清空");
-              }
+              setClearCacheConfirmOpen(true);
             }}
           >
             <Trash2 className="h-3.5 w-3.5 mr-1" />
@@ -84,5 +81,20 @@ export function StreamCacheSetting() {
         </div>
       }
     />
+
+      <ConfirmDrawer
+        open={clearCacheConfirmOpen}
+        onOpenChange={setClearCacheConfirmOpen}
+        title="确定要清空所有音频缓存吗？"
+        description="此操作不可恢复。"
+        onConfirm={async () => {
+          await clearAudioCache();
+          setStats({ entryCount: 0, approxSize: 0 });
+          toastUtils.info("音频缓存已清空");
+        }}
+        destructive
+        confirmLabel="清空"
+      />
+    </>
   );
 }
