@@ -10,13 +10,13 @@ import { PageLayout } from "./PageLayout";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+  Drawer,
+  DrawerContent,
+  DrawerDescription,
+  DrawerFooter,
+  DrawerHeader,
+  DrawerTitle,
+} from "@/components/ui/drawer";
 import toast from "react-hot-toast";
 import { convertToMusicTrack } from "@/lib/utils/download";
 import {
@@ -164,13 +164,11 @@ export function LocalMusicPage({
 
         updateFiles((prev) => prev.filter((f) => f.localPath !== localPath));
 
-        if (shouldDeleteFile) {
-          const recordEntry = Object.entries(useDownloadStore.getState().records).find(
-            ([, uri]) => normalizeLocalPath(uri) === normalizeLocalPath(localPath)
-          );
-          if (recordEntry) {
-            await useDownloadStore.getState().removeRecord(recordEntry[0]);
-          }
+        const recordEntry = Object.entries(useDownloadStore.getState().records).find(
+          ([, uri]) => normalizeLocalPath(uri) === normalizeLocalPath(localPath)
+        );
+        if (recordEntry) {
+          await useDownloadStore.getState().removeRecord(recordEntry[0]);
         }
 
         const currentTrack = queue[currentIndex];
@@ -234,15 +232,7 @@ export function LocalMusicPage({
   );
 
   const tracks = useMemo(
-    () =>
-      displayFiles
-        .map((file, index) => ({ file, index }))
-        .sort((a, b) => {
-          const aTime = a.file.modifiedTime ?? Number.NEGATIVE_INFINITY;
-          const bTime = b.file.modifiedTime ?? Number.NEGATIVE_INFINITY;
-          return bTime - aTime || a.index - b.index;
-        })
-        .map(({ file }) => convertToMusicTrack(file)),
+    () => displayFiles.map((file) => convertToMusicTrack(file)),
     [displayFiles]
   );
 
@@ -345,7 +335,7 @@ export function LocalMusicPage({
         onOpenChange={setShowPermissionDialog}
       />
 
-      <Dialog
+      <Drawer
         open={deleteTargets.length > 0}
         onOpenChange={(open) => {
           if (open) return;
@@ -354,18 +344,18 @@ export function LocalMusicPage({
           setDeleteLocalFile(false);
         }}
       >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>
+        <DrawerContent>
+          <DrawerHeader>
+            <DrawerTitle>
               {deleteTarget
                 ? `删除《${deleteTarget.name}》`
                 : `删除选中的 ${deleteTargets.length} 首歌曲`}
-            </DialogTitle>
-            <DialogDescription>
+            </DrawerTitle>
+            <DrawerDescription>
               默认只从当前列表移除，重新扫描后可能再次出现。
-            </DialogDescription>
-          </DialogHeader>
-          <div className="flex items-center gap-2 py-2">
+            </DrawerDescription>
+          </DrawerHeader>
+          <div className="flex items-center gap-3 px-4 py-2">
             <Checkbox
               data-testid="delete-local-file"
               checked={deleteLocalFile}
@@ -375,7 +365,14 @@ export function LocalMusicPage({
             />
             <span className="text-sm">同时删除本地文件</span>
           </div>
-          <DialogFooter>
+          <DrawerFooter>
+            <Button
+              variant="destructive"
+              data-testid="confirm-local-delete"
+              onClick={confirmDeleteTracks}
+            >
+              删除
+            </Button>
             <Button
               variant="ghost"
               onClick={() => {
@@ -386,16 +383,9 @@ export function LocalMusicPage({
             >
               取消
             </Button>
-            <Button
-              variant="destructive"
-              data-testid="confirm-local-delete"
-              onClick={confirmDeleteTracks}
-            >
-              删除
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </DrawerFooter>
+        </DrawerContent>
+      </Drawer>
     </PageLayout>
   );
 }

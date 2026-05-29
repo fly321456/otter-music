@@ -6,7 +6,12 @@ import { musicApi } from "@/lib/music-api";
 import { logger } from "@/lib/logger";
 import type { MusicTrack } from "@/types/music";
 
-export const MAX_EMBED_SIZE = 200 * 1024 * 1024; // 200MB
+export const MAX_EMBED_SIZE = 50 * 1024 * 1024; // 50MB
+
+const MP3_MIME_TYPES = new Set([
+  "audio/mpeg",
+  "audio/mp3",
+]);
 
 interface EmbedResult {
   blob: Blob;
@@ -14,9 +19,6 @@ interface EmbedResult {
   lyricEmbedded: boolean;
 }
 
-/**
- * 在 MP3 blob 中内嵌封面图和歌词。跳过超过 50MB 的文件。
- */
 export async function embedMetadata(
   mp3Blob: Blob,
   track: MusicTrack,
@@ -25,6 +27,15 @@ export async function embedMetadata(
   const { embedCover, embedLyric } = options;
 
   if (!embedCover && !embedLyric) {
+    return {
+      blob: mp3Blob,
+      coverEmbedded: false,
+      lyricEmbedded: false,
+    };
+  }
+
+  if (!MP3_MIME_TYPES.has(mp3Blob.type)) {
+    logger.warn("id3-embed", `跳过非 MP3 格式的元数据嵌入: ${mp3Blob.type}`);
     return {
       blob: mp3Blob,
       coverEmbedded: false,

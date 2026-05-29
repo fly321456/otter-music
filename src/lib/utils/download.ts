@@ -23,7 +23,7 @@ import { toastUtils } from "./toast";
 import { getProxyUrl, isProxyUrl } from "@/lib/api/config";
 import { logger } from "@/lib/logger";
 import { processBatchIO } from "@/lib/utils";
-import { embedMetadata } from "./id3-embed";
+import { embedMetadata, MAX_EMBED_SIZE } from "./id3-embed";
 
 const DOWNLOAD_TIMEOUT_MS = 5 * 60 * 1000;
 
@@ -56,7 +56,6 @@ interface PerformDownloadOpts {
 
 const NATIVE_BATCH_DOWNLOAD_CONCURRENCY = 1;
 const WEB_BATCH_DOWNLOAD_CONCURRENCY = 2;
-const MAX_METADATA_EMBED_SIZE = 200 * 1024 * 1024;
 
 function getDownloadContext() {
   return {
@@ -346,7 +345,7 @@ async function embedMetadataNative(
       directory: STORAGE_CONFIG.BASE_DIR,
     });
 
-    if (statResult.size && statResult.size > MAX_METADATA_EMBED_SIZE) {
+    if (statResult.size && statResult.size > MAX_EMBED_SIZE) {
       logger.warn(
         "download",
         `文件过大 (${(statResult.size / 1024 / 1024).toFixed(1)}MB)，跳过元数据嵌入`,

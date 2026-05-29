@@ -1,5 +1,5 @@
 import { Button } from "@/components/ui/button";
-import { Play, Search } from "lucide-react";
+import { Play, Search, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
 import { MusicTrackList } from "./MusicTrackList";
 import { Input } from "@/components/ui/input";
 import { useState, useMemo, useRef } from "react";
@@ -24,6 +24,13 @@ import {
   DrawerFooter,
 } from "@/components/ui/drawer";
 import { Label } from "@/components/ui/label";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { SortConfig, sortTracks } from "@/lib/utils/track-sort";
 
 import { format } from "date-fns";
 import { AddByUrlDrawer } from "./AddByUrlDrawer";
@@ -80,6 +87,7 @@ export function MusicPlaylistView({
   const [dedupeSelectedIds, setDedupeSelectedIds] = useState<
     Set<string> | undefined
   >();
+  const [sortConfig, setSortConfig] = useState<SortConfig | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   const playlists = useMusicStore(useShallow((state) => state.playlists));
@@ -97,15 +105,18 @@ export function MusicPlaylistView({
   };
 
   const filteredTracks = useMemo(() => {
-    if (!searchQuery.trim()) return tracks;
-    const lower = searchQuery.toLowerCase();
-    return tracks.filter(
-      (t) =>
-        t.name.toLowerCase().includes(lower) ||
-        t.artist?.some((a) => a?.toLowerCase().includes(lower)) ||
-        t.album?.toLowerCase().includes(lower)
-    );
-  }, [tracks, searchQuery]);
+    const filtered = searchQuery.trim()
+      ? tracks.filter((t) => {
+          const lower = searchQuery.toLowerCase();
+          return (
+            t.name.toLowerCase().includes(lower) ||
+            t.artist?.some((a) => a?.toLowerCase().includes(lower)) ||
+            t.album?.toLowerCase().includes(lower)
+          );
+        })
+      : tracks;
+    return sortTracks(filtered, sortConfig);
+  }, [tracks, searchQuery, sortConfig]);
 
   const handleDeduplicate = () => {
     if (!playlistId) return;
@@ -275,14 +286,101 @@ export function MusicPlaylistView({
               />
             )}
 
-            <div className="relative ml-auto w-32">
-              <Search className="absolute left-2 top-2.5 h-3 w-3 text-muted-foreground" />
-              <Input
-                placeholder="搜索..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-8 h-8 text-xs"
-              />
+            <div className="relative ml-auto flex items-center gap-2">
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="icon" className="h-8 w-8">
+                    {sortConfig ? (
+                      sortConfig.direction === "asc" ? (
+                        <ArrowUp className="h-3.5 w-3.5" />
+                      ) : (
+                        <ArrowDown className="h-3.5 w-3.5" />
+                      )
+                    ) : (
+                      <ArrowUpDown className="h-3.5 w-3.5" />
+                    )}
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-40">
+                  <DropdownMenuItem
+                    onClick={() =>
+                      setSortConfig(
+                        sortConfig?.field === "name"
+                          ? {
+                              field: "name",
+                              direction:
+                                sortConfig.direction === "asc" ? "desc" : "asc",
+                            }
+                          : { field: "name", direction: "asc" }
+                      )
+                    }
+                  >
+                    按名称
+                    {sortConfig?.field === "name" && (
+                      <span className="ml-auto text-xs text-muted-foreground">
+                        {sortConfig.direction === "asc" ? "↑" : "↓"}
+                      </span>
+                    )}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={() =>
+                      setSortConfig(
+                        sortConfig?.field === "artist"
+                          ? {
+                              field: "artist",
+                              direction:
+                                sortConfig.direction === "asc" ? "desc" : "asc",
+                            }
+                          : { field: "artist", direction: "asc" }
+                      )
+                    }
+                  >
+                    按歌手
+                    {sortConfig?.field === "artist" && (
+                      <span className="ml-auto text-xs text-muted-foreground">
+                        {sortConfig.direction === "asc" ? "↑" : "↓"}
+                      </span>
+                    )}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={() =>
+                      setSortConfig(
+                        sortConfig?.field === "size"
+                          ? {
+                              field: "size",
+                              direction:
+                                sortConfig.direction === "asc" ? "desc" : "asc",
+                            }
+                          : { field: "size", direction: "asc" }
+                      )
+                    }
+                  >
+                    按大小
+                    {sortConfig?.field === "size" && (
+                      <span className="ml-auto text-xs text-muted-foreground">
+                        {sortConfig.direction === "asc" ? "↑" : "↓"}
+                      </span>
+                    )}
+                  </DropdownMenuItem>
+                  {sortConfig && (
+                    <>
+                      <div className="border-t my-1" />
+                      <DropdownMenuItem onClick={() => setSortConfig(null)}>
+                        清除排序
+                      </DropdownMenuItem>
+                    </>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
+              <div className="relative w-32">
+                <Search className="absolute left-2 top-2.5 h-3 w-3 text-muted-foreground" />
+                <Input
+                  placeholder="搜索..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-8 h-8 text-xs"
+                />
+              </div>
             </div>
           </div>
         </div>
