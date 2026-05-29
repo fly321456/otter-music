@@ -260,30 +260,34 @@ export function mergeLocalFilesWithDownloadRecords(
   records: Record<string, string>
 ) {
   const merged = [...files];
-  const seenPaths = new Set(
-    files.map((file) => normalizeLocalPath(file.localPath)).filter(Boolean)
-  );
-  const seenExactKeys = collectDownloadedExactKeysFromLocalFiles(files);
+  const seenPaths = new Set<string>();
+  const seenExactKeys = new Set<string>();
+
+  for (const file of files) {
+    const normalizedPath = normalizeLocalPath(file.localPath);
+    if (normalizedPath) seenPaths.add(normalizedPath);
+
+    const exactKey = buildExactKeyFromNameArtist(
+      file.name || "未知歌曲",
+      splitArtists(file.artist)
+    );
+    if (exactKey) seenExactKeys.add(exactKey);
+  }
 
   Object.values(records).forEach((uri) => {
     const synthetic = createLocalFileFromDownloadRecord(uri);
-    const normalizedPath = normalizeLocalPath(synthetic?.localPath);
-    const exactKey = synthetic
-      ? buildExactKeyFromNameArtist(
-          synthetic.name || "未知歌曲",
-          splitArtists(synthetic.artist)
-        )
-      : null;
-    if (
-      !synthetic ||
-      !normalizedPath ||
-      seenPaths.has(normalizedPath) ||
-      (exactKey && seenExactKeys.has(exactKey))
-    ) {
-      return;
-    }
+    if (!synthetic) return;
 
-    seenPaths.add(normalizedPath);
+    const normalizedPath = normalizeLocalPath(synthetic.localPath);
+    const exactKey = buildExactKeyFromNameArtist(
+      synthetic.name || "未知歌曲",
+      splitArtists(synthetic.artist)
+    );
+
+    if (normalizedPath && seenPaths.has(normalizedPath)) return;
+    if (exactKey && seenExactKeys.has(exactKey)) return;
+
+    if (normalizedPath) seenPaths.add(normalizedPath);
     if (exactKey) seenExactKeys.add(exactKey);
     merged.push(synthetic);
   });

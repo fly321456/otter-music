@@ -8,10 +8,11 @@ import { useDownloadStore } from "@/store/download-store";
 import { Capacitor } from "@capacitor/core";
 import { buildDownloadKey } from "@/lib/utils/download";
 import { findDownloadedRecordByTrack } from "@/lib/utils/download-records";
-import type { MusicSource } from "@/types/music";
+import type { MusicSource, MusicTrack } from "@/types/music";
 import toast from "react-hot-toast";
 import { handleAutoMatch } from "@/lib/audio-match";
 import { revokeBlobUrl } from "@/lib/utils/blob-registry";
+import { MusicProviderFactory } from "@/lib/music-provider/factory";
 import { logger } from "@/lib/logger";
 
 const AUDIO_READY_TIMEOUT = 8000;
@@ -111,21 +112,45 @@ function waitForAudioReady(
 async function resolveLocalDownloadUrl({
   track,
 }: {
-  track: { id: string; source: MusicSource; name: string; artist: string[] };
+  track: { id: string; source: MusicSource; name: string; artist: string[]; url_id?: string };
 }): Promise<{ url: string | null; downloadKey: string | null }> {
   const isNative = Capacitor.isNativePlatform();
   const isLocal = track.source === "local";
   if (isNative && !isLocal) {
     const downloadStore = useDownloadStore.getState();
-    const matchedRecord = findDownloadedRecordByTrack(
+    let matchedRecord = findDownloadedRecordByTrack(
       downloadStore.records,
       track
     );
+
+    if (!matchedRecord) {
+      const altSource =
+        track.source === "netease"
+          ? ("_netease" as MusicSource)
+          : track.source === "_netease"
+            ? ("netease" as MusicSource)
+            : null;
+      if (altSource) {
+        matchedRecord = findDownloadedRecordByTrack(downloadStore.records, {
+          ...track,
+          source: altSource,
+        });
+      }
+    }
+
     const downloadKey =
       matchedRecord?.key ?? buildDownloadKey(track.source, track.id);
     const uri = matchedRecord?.uri ?? downloadStore.getUri(downloadKey);
     if (uri) {
       return { url: Capacitor.convertFileSrc(uri), downloadKey };
+    }
+
+    if (!matchedRecord) {
+      logger.warn("resolveLocalDownloadUrl", "Download record not found", {
+        source: track.source,
+        id: track.id,
+        name: track.name,
+      });
     }
   }
 
@@ -279,12 +304,17 @@ export function useAudioTrackLoader(
               source: currentTrackSource,
               name: currentTrack.name,
               artist: currentTrack.artist,
+              url_id: currentTrackUrlId,
             },
           });
         const hasDownload = Boolean(localDownloadUrl);
 
         if (!isLocal && !hasDownload && !isOnline) {
           // 先尝试走缓存链路（urlMemoryCache → cachedFetch → SW），全部失败再判定不可播
+          logger.warn("useAudioTrackLoader", "Offline with no download, trying cached URL", {
+            trackId: currentTrackId,
+            source: currentTrackSource,
+          });
           try {
             const remoteUrl = await getRemoteUrl();
             if (remoteUrl) {
@@ -323,6 +353,20 @@ export function useAudioTrackLoader(
           );
           setIsPlaying(false);
           return;
+        }
+
+        if (isLocal) {
+          const localUrl = await MusicProviderFactory.getProvider("local").getUrl(
+            { id: currentTrackId, url_id: currentTrackUrlId, source: currentTrackSource } as MusicTrack,
+            parseInt(quality, 10)
+          );
+          if (localUrl) {
+            urlMemoryCache.set(trackKey, localUrl);
+            remoteUrlRef.current = localUrl;
+            await setSourceAndPlay(localUrl);
+            return;
+          }
+          throw new Error("LOCAL_URL_RESOLVE_FAILED");
         }
 
         try {

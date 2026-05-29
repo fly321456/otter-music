@@ -11,6 +11,7 @@ import {
   getMusicComments
 } from "@/lib/netease/netease-api";
 import { forceHttps } from "@otter-music/shared";
+import { logger } from "@/lib/logger";
 
 export class NeteaseApiProvider implements IMusicProvider {
   source = '_netease';
@@ -30,7 +31,15 @@ export class NeteaseApiProvider implements IMusicProvider {
   async getUrl(track: MusicTrack, br: number = 192): Promise<string | null> {
     try {
       const res = await getSongUrl(track.id, br * 1000);
-      return forceHttps(res.data?.data?.[0]?.url) || null;
+      const trackData = res.data?.data?.[0];
+      if (trackData?.freeTrialInfo) {
+        logger.warn("netease-api-provider", "Got trial URL, skipping", {
+          trackId: track.id,
+          br,
+        });
+        return null;
+      }
+      return forceHttps(trackData?.url) || null;
     } catch (e) {
       console.error('NeteaseProvider getUrl failed:', e);
       return null;

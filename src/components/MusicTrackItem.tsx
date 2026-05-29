@@ -61,7 +61,6 @@ interface MusicTrackItemProps {
   removeLabel?: string;
   confirmRemove?: boolean;
   isDownloaded?: boolean; // 可选，未传则从 store 按需读取
-  quality?: string;
   showSourceBadge?: boolean;
   className?: string;
   style?: React.CSSProperties;
@@ -83,7 +82,6 @@ export function MusicTrackItem({
   removeLabel,
   confirmRemove,
   isDownloaded,
-  quality = "192",
   showSourceBadge = true,
   className,
   style,
@@ -235,7 +233,7 @@ export function MusicTrackItem({
             setIsAddToPlaylistOpen(true);
           }}
           onDownload={() => {
-            downloadMusicTrack(track, parseInt(quality));
+            downloadMusicTrack(track);
           }}
           onToggleLike={() => {
             if (isFavorite(track.id)) {

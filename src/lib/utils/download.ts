@@ -12,11 +12,10 @@ import { MusicSource, MusicTrack } from "@/types/music";
 import toast from "react-hot-toast";
 import { base64ToBlob } from "@/lib/utils/base64";
 import {
-  buildTrackExactKey,
-  findDownloadedRecordByTrack,
   hasDownloadedTrack,
 } from "@/lib/utils/download-records";
 import { LocalMusicFile } from "@/plugins/local-music";
+
 import { useDownloadStore } from "@/store/download-store";
 import { useLocalMusicStore } from "@/store/local-music-store";
 import { useMusicStore } from "@/store/music-store";
@@ -24,7 +23,9 @@ import { toastUtils } from "./toast";
 import { getProxyUrl, isProxyUrl } from "@/lib/api/config";
 import { logger } from "@/lib/logger";
 import { processBatchIO } from "@/lib/utils";
-import { embedMetadata, MAX_EMBED_SIZE } from "./id3-embed";
+import { embedMetadata } from "./id3-embed";
+
+const DOWNLOAD_TIMEOUT_MS = 5 * 60 * 1000;
 
 function getCurrentPlayingUrl(
   track: MusicTrack,
@@ -55,7 +56,6 @@ interface PerformDownloadOpts {
 
 const NATIVE_BATCH_DOWNLOAD_CONCURRENCY = 1;
 const WEB_BATCH_DOWNLOAD_CONCURRENCY = 2;
-const NATIVE_METADATA_READ_LIMIT = MAX_EMBED_SIZE;
 const MAX_METADATA_EMBED_SIZE = 200 * 1024 * 1024;
 
 function getDownloadContext() {
@@ -70,9 +70,14 @@ function isTrackAlreadyDownloaded(track: MusicTrack) {
   return hasDownloadedTrack(records, localFiles, track);
 }
 
+const ALL_QUALITIES = [999, 320, 192, 128];
+
+function getFallbackQualities(primaryBr: number): number[] {
+  return ALL_QUALITIES.filter((q) => q !== primaryBr);
+}
+
 async function performDownloadOne(
   track: MusicTrack,
-  _br: number,
   toastId?: string,
   opts?: PerformDownloadOpts
 ): Promise<void> {
@@ -80,7 +85,7 @@ async function performDownloadOne(
   const isNative = Capacitor.isNativePlatform();
   const br = parseInt(useMusicStore.getState().downloadQuality) || 320;
 
-  if (isNative && isTrackAlreadyDownloaded(track)) {
+  if (isTrackAlreadyDownloaded(track)) {
     logger.info("download", "Skip already-downloaded track", {
       trackId: track.id,
       source: track.source,
@@ -97,9 +102,7 @@ async function performDownloadOne(
   }
 
   if (!url) {
-    const fallbackQualities = [192, 128];
-    for (const fallbackBr of fallbackQualities) {
-      if (fallbackBr >= br) continue;
+    for (const fallbackBr of getFallbackQualities(br)) {
       url = await MusicProviderFactory.getProvider(track.source).getUrl(
         track,
         fallbackBr
@@ -107,7 +110,7 @@ async function performDownloadOne(
       if (url) break;
     }
   }
-  
+
   if (!url) throw new Error("无法获取下载链接");
 
   const doDownload = async (downloadUrl: string) => {
@@ -123,8 +126,18 @@ async function performDownloadOne(
       logger.warn("Reused URL download failed, falling back to getUrl...", err);
       const freshUrl = await MusicProviderFactory.getProvider(track.source).getUrl(track, br);
       if (!freshUrl) throw new Error("无法获取下载链接");
-      await doDownload(freshUrl);
-      return;
+      try {
+        await doDownload(freshUrl);
+        return;
+      } catch (freshErr) {
+        if (isProxyUrl(freshUrl)) throw freshErr;
+        logger.warn("Fresh URL download failed, retrying with proxy...", freshErr);
+        if (toastId) {
+          toast.loading("已切换备用下载线路", { id: toastId, icon: "🌐" });
+        }
+        await doDownload(getProxyUrl(freshUrl));
+        return;
+      }
     }
 
     if (isProxyUrl(url)) throw err;
@@ -136,7 +149,7 @@ async function performDownloadOne(
   }
 }
 
-export async function downloadMusicTrack(track: MusicTrack, br = 192) {
+export async function downloadMusicTrack(track: MusicTrack) {
   if (track.source !== "local" && isTrackAlreadyDownloaded(track)) {
     return toastUtils.info("该歌曲已在本地存在，跳过下载");
   }
@@ -147,7 +160,7 @@ export async function downloadMusicTrack(track: MusicTrack, br = 192) {
   const toastId = toast.loading(`准备下载: ${track.name}`);
 
   try {
-    await performDownloadOne(track, br, toastId);
+    await performDownloadOne(track, toastId);
   } catch (err: unknown) {
     logger.error("downloadMusicTrack", "Download failed", err, {
       trackId: track.id,
@@ -158,8 +171,8 @@ export async function downloadMusicTrack(track: MusicTrack, br = 192) {
   }
 }
 
-export async function downloadMusicTrackBatch(tracks: MusicTrack[], br = 192) {
-  const validTracks = tracks.filter((t) => t.source !== "local");
+export async function downloadMusicTrackBatch(tracks: MusicTrack[]) {
+  const validTracks = tracks.filter((t) => t.source !== "local" && !isTrackAlreadyDownloaded(t));
   const total = validTracks.length;
 
   if (!total) {
@@ -187,7 +200,7 @@ export async function downloadMusicTrackBatch(tracks: MusicTrack[], br = 192) {
     validTracks,
     async (track) => {
       try {
-        await performDownloadOne(track, br);
+        await performDownloadOne(track);
       } catch (err) {
         failCount++;
         logger.error(
@@ -214,6 +227,42 @@ export async function downloadMusicTrackBatch(tracks: MusicTrack[], br = 192) {
     : toast.success(successMsg, { id: toastId, duration: 3000 });
 }
 
+function resolveContentUriToFilePath(contentUri: string, relativePath: string): string | null {
+  try {
+    const decoded = decodeURIComponent(contentUri);
+
+    const primaryMatch = decoded.match(/\/document\/primary:(.+)/);
+    if (primaryMatch) {
+      return `/storage/emulated/0/${primaryMatch[1]}`;
+    }
+
+    const sdCardMatch = decoded.match(/\/document\/([A-F0-9-]+):(.+)/i);
+    if (sdCardMatch) {
+      const sdCardId = sdCardMatch[1];
+      const filePath = sdCardMatch[2];
+      return `/storage/${sdCardId}/${filePath}`;
+    }
+
+    const treeMatch = decoded.match(/\/tree\/primary:(.+)/);
+    if (treeMatch) {
+      const treePath = treeMatch[1];
+      const fileName = relativePath.split("/").pop() || "";
+      return `/storage/emulated/0/${treePath}/${fileName}`;
+    }
+
+    const sdTreeMatch = decoded.match(/\/tree\/([A-F0-9-]+):(.+)/i);
+    if (sdTreeMatch) {
+      const sdCardId = sdTreeMatch[1];
+      const treePath = sdTreeMatch[2];
+      const fileName = relativePath.split("/").pop() || "";
+      return `/storage/${sdCardId}/${treePath}/${fileName}`;
+    }
+  } catch {
+    // Ignore URI parsing errors
+  }
+  return null;
+}
+
 async function downloadNative(
   url: string,
   fileName: string,
@@ -224,22 +273,49 @@ async function downloadNative(
   await ensurePermission();
   const store = useMusicStore.getState();
   const musicPath = store.downloadDirectory || AppPaths.Music;
-  await ensureDir(musicPath);
 
   const filePath = `${musicPath}/${fileName}`;
 
   const listener = await FileTransfer.addListener(
     "progress",
     ({ bytes, contentLength }) => {
-      if (!contentLength || !toastId) return;
-      const percent = Math.round((bytes / contentLength) * 100);
-      toast.loading(`下载 ${percent}%`, { id: toastId });
+      if (!toastId) return;
+      if (!contentLength) {
+        toast.loading(`下载中...`, { id: toastId });
+      } else {
+        const percent = Math.round((bytes / contentLength) * 100);
+        toast.loading(`下载 ${percent}%`, { id: toastId });
+      }
     }
   );
 
   try {
-    const absolutePath = `/storage/emulated/0/${filePath}`;
-    const downloadPath = `file://${absolutePath}`;
+    await ensureDir(musicPath);
+
+    const fileUri = await Filesystem.getUri({
+      directory: STORAGE_CONFIG.BASE_DIR,
+      path: filePath,
+    });
+
+    let downloadPath = fileUri.uri;
+
+    if (downloadPath.startsWith('content://')) {
+      const originalUri = downloadPath;
+      const resolvedPath = resolveContentUriToFilePath(downloadPath, filePath);
+      if (resolvedPath) {
+        downloadPath = resolvedPath;
+      } else {
+        downloadPath = `/storage/emulated/0/${filePath}`;
+        logger.warn("download", "Failed to resolve content URI, using fallback path", {
+          contentUri: originalUri,
+          fallbackPath: downloadPath,
+        });
+      }
+    }
+
+    if (!downloadPath.startsWith('file://')) {
+      downloadPath = `file://${downloadPath}`;
+    }
 
     await FileTransfer.downloadFile({
       url,
@@ -249,11 +325,6 @@ async function downloadNative(
     if (!opts?.skipMetadata && (store.embedCover || store.embedLyric)) {
       await embedMetadataNative(filePath, track, toastId);
     }
-
-    const fileUri = await Filesystem.getUri({
-      directory: STORAGE_CONFIG.BASE_DIR,
-      path: filePath,
-    });
 
     const key = buildDownloadKey(track.source, track.id);
     await useDownloadStore.getState().addRecord(key, fileUri.uri);
@@ -291,7 +362,19 @@ async function embedMetadataNative(
       directory: STORAGE_CONFIG.BASE_DIR,
     });
 
-    const blob = base64ToBlob(readResult.data as string, "audio/mpeg");
+    const ext = filePath.split('.').pop()?.toLowerCase() || 'mp3';
+    const mimeMap: Record<string, string> = {
+      mp3: 'audio/mpeg',
+      flac: 'audio/flac',
+      wav: 'audio/wav',
+      ogg: 'audio/ogg',
+      aac: 'audio/aac',
+      m4a: 'audio/mp4',
+      wma: 'audio/x-ms-wma',
+      opus: 'audio/opus',
+    };
+    const mimeType = mimeMap[ext] || 'audio/mpeg';
+    const blob = base64ToBlob(readResult.data as string, mimeType);
 
     const store = useMusicStore.getState();
     const result = await embedMetadata(blob, track, {
@@ -312,13 +395,16 @@ async function embedMetadataNative(
 }
 
 async function blobToBase64(blob: Blob): Promise<string> {
-  const buffer = await blob.arrayBuffer();
-  const bytes = new Uint8Array(buffer);
-  let binary = "";
-  for (let i = 0; i < bytes.length; i++) {
-    binary += String.fromCharCode(bytes[i]);
-  }
-  return btoa(binary);
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const dataUrl = reader.result as string;
+      const base64 = dataUrl.split(",")[1] || "";
+      resolve(base64);
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
 }
 
 async function downloadWeb(
@@ -328,37 +414,48 @@ async function downloadWeb(
   toastId?: string,
   opts?: PerformDownloadOpts
 ) {
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), DOWNLOAD_TIMEOUT_MS);
 
-  const total = Number(res.headers.get("content-length")) || 0;
-  const reader = res.body?.getReader();
-
-  if (!reader) {
-    const rawBlob = await res.blob();
-    const blob = await applyMetadata(rawBlob, track, toastId, opts);
-    return triggerBlobDownload(blob, fileName, toastId);
-  }
-
-  const chunks: Uint8Array[] = [];
-  let received = 0;
-
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-
-    chunks.push(value);
-    received += value.length;
-
-    if (total && toastId) {
-      const percent = Math.round((received / total) * 100);
-      toast.loading(`下载 ${percent}%`, { id: toastId });
+  try {
+    const res = await fetch(url, { signal: controller.signal });
+    if (!res.ok) {
+      const statusText = res.statusText || 'Unknown error';
+      throw new Error(`下载失败: HTTP ${res.status} ${statusText}`);
     }
-  }
 
-  const rawBlob = new Blob(chunks as BlobPart[], { type: "audio/mpeg" });
-  const blob = await applyMetadata(rawBlob, track, toastId, opts);
-  triggerBlobDownload(blob, fileName, toastId);
+    const total = Number(res.headers.get("content-length")) || 0;
+    const contentType = res.headers.get("content-type") || "audio/mpeg";
+    const reader = res.body?.getReader();
+
+    if (!reader) {
+      const rawBlob = await res.blob();
+      const blob = await applyMetadata(rawBlob, track, toastId, opts);
+      return triggerBlobDownload(blob, fileName, toastId);
+    }
+
+    const chunks: Uint8Array[] = [];
+    let received = 0;
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      chunks.push(value);
+      received += value.length;
+
+      if (total && toastId) {
+        const percent = Math.round((received / total) * 100);
+        toast.loading(`下载 ${percent}%`, { id: toastId });
+      }
+    }
+
+    const rawBlob = new Blob(chunks as BlobPart[], { type: contentType });
+    const blob = await applyMetadata(rawBlob, track, toastId, opts);
+    triggerBlobDownload(blob, fileName, toastId);
+  } finally {
+    clearTimeout(timeoutId);
+  }
 }
 
 async function applyMetadata(
@@ -473,7 +570,7 @@ export async function loadDownloadRecordsFromDisk(): Promise<Record<
 
     return JSON.parse(content);
   } catch (e) {
-    console.warn("读取下载记录失败:", e);
+    logger.warn("download", "读取下载记录失败", e);
     return null;
   }
 }

@@ -177,13 +177,11 @@ export function MusicTrackList({
   };
 
   const {
-    quality,
     addBatchToFavorites,
     addBatchToNextPlay,
     showSourceBadge: storeShowBadge,
   } = useMusicStore(
     useShallow((state) => ({
-      quality: state.quality,
       addBatchToFavorites: state.addBatchToFavorites,
       addBatchToNextPlay: state.addBatchToNextPlay,
       showSourceBadge: state.showSourceBadge,
@@ -273,7 +271,7 @@ export function MusicTrackList({
     const selected = getSelectedTracks();
     if (!selected.length) return;
     resetSelection();
-    await downloadMusicTrackBatch(selected, parseInt(quality));
+    await downloadMusicTrackBatch(selected);
   };
 
   const dropAnimation: DropAnimation = {
@@ -451,7 +449,6 @@ export function MusicTrackList({
                   }
                   removeLabel={removeLabel}
                   confirmRemove={confirmRemove}
-                  quality={quality}
                   showSourceBadge={
                     isSelectionMode || storeShowBadge || showSourceBadge
                   }
@@ -518,7 +515,6 @@ export function MusicTrackList({
                     onPlay={() => {}}
                     showCheckbox={isSelectionMode}
                     isSelected={selectedIds.has(track.id)}
-                    quality={quality}
                     showSourceBadge={true}
                     dragHandleProps={{ style: { cursor: "grabbing" } }}
                     isSortable={true}

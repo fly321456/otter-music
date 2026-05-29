@@ -256,18 +256,21 @@ export async function getSongUrl(id: string, br: number = 999000, cookie: string
         logger.warn(`[NetEase] EAPI failed for ${realId}, falling back to WEAPI...`);
     }
 
-    const weapiRes = await requestWeapi<{ data: { url: string, br: number, size: number }[] }>(
-        `${BASE_URL}/weapi/song/enhance/player/url/v1`,
-        { ids: `[${realId}]`, level, encodeType: 'flac', csrf_token: '' },
-        finalCookie
-    );
-    
-    const weapiTrackData = weapiRes.data?.data?.[0];
-    if (!weapiTrackData?.url) {
-        logger.error(`[NetEase] Both EAPI and WEAPI failed to get URL for ${realId}`);
-    }
-    
-    return weapiRes;
+      const weapiRes = await requestWeapi<{ data: { url: string, br: number, size: number, freeTrialInfo?: unknown }[] }>(
+          `${BASE_URL}/weapi/song/enhance/player/url/v1`,
+          { ids: `[${realId}]`, level, encodeType: 'flac', csrf_token: '' },
+          finalCookie
+      );
+      
+      const weapiTrackData = weapiRes.data?.data?.[0];
+      if (weapiTrackData?.url && weapiTrackData.freeTrialInfo) {
+          logger.warn(`[NetEase] WEAPI returned trial URL for ${realId}, VIP cookie may be invalid`);
+      }
+      if (!weapiTrackData?.url) {
+          logger.error(`[NetEase] Both EAPI and WEAPI failed to get URL for ${realId}`);
+      }
+      
+      return weapiRes;
 }
 
 export const getQrKey = async (): Promise<string> => {

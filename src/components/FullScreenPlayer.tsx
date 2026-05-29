@@ -184,7 +184,6 @@ export function FullScreenPlayer({
 
   const {
     queue,
-    quality,
     currentIndex,
     setCurrentIndexAndPlay,
     clearQueue,
@@ -374,7 +373,7 @@ export function FullScreenPlayer({
                     setIsAddToPlaylistOpen(true);
                   }}
                   onDownload={() => {
-                    downloadMusicTrack(currentTrack, parseInt(quality));
+                    downloadMusicTrack(currentTrack);
                   }}
                   isFavorite={isFavorite}
                   onToggleLike={() => {

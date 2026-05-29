@@ -56,7 +56,7 @@ public class LocalMusicPlugin extends Plugin {
     private static final String[] AUDIO_EXTENSIONS = {".mp3", ".flac", ".wav", ".m4a", ".aac", ".ogg", ".wma", ".ape", ".opus", ".m4b"};
     private static final int MAX_DEPTH = 20;
     private static final int MAX_FILES = 10000;
-    private static final long MIN_DURATION = 60000;
+    private static final long MIN_DURATION = 30000;
     private static final String DEFAULT_DOWNLOAD_DIR = "Download/OtterMusic";
 
     private final ExecutorService executor = Executors.newFixedThreadPool(1);
@@ -65,9 +65,16 @@ public class LocalMusicPlugin extends Plugin {
 
     @PluginMethod
     public void scanLocalMusic(PluginCall call) {
+        if (isScanning) {
+            resolveError(call, "扫描正在进行中");
+            return;
+        }
+        if (!hasRequiredPermission()) {
+            requestPermissionForAlias(PERMISSION_ALIAS, call, "handlePermissionResult");
+            return;
+        }
         String downloadDir = call.getString("downloadDirectory");
-        if (hasRequiredPermission()) scanMusicFiles(call, downloadDir);
-        else requestPermissionForAlias(PERMISSION_ALIAS, call, "handlePermissionResult");
+        scanMusicFiles(call, downloadDir);
     }
 
     @PluginMethod
@@ -135,14 +142,22 @@ public class LocalMusicPlugin extends Plugin {
 
     @PermissionCallback
     private void handlePermissionResult(PluginCall call) {
-        String downloadDir = call.getString("downloadDirectory");
-        if (hasRequiredPermission()) scanMusicFiles(call, downloadDir); else resolveError(call, "Permission denied");
+        if (hasRequiredPermission()) {
+            String downloadDir = call.getString("downloadDirectory");
+            scanMusicFiles(call, downloadDir);
+        } else {
+            resolveError(call, "Permission denied");
+        }
     }
 
     @PermissionCallback
     private void handleAllStoragePermissionResult(PluginCall call) {
-        String downloadDir = call.getString("downloadDirectory");
-        if (hasRequiredPermission()) executeAllStorageScan(call, downloadDir); else resolveError(call, "Permission denied");
+        if (hasRequiredPermission()) {
+            String downloadDir = call.getString("downloadDirectory");
+            executeAllStorageScan(call, downloadDir);
+        } else {
+            resolveError(call, "Permission denied");
+        }
     }
 
     private boolean hasRequiredPermission() {
@@ -157,27 +172,42 @@ public class LocalMusicPlugin extends Plugin {
     }
 
     private void scanMusicFiles(PluginCall call, String downloadDirectory) {
+        isScanning = true;
         executor.execute(() -> {
-            JSObject result = performMediaStoreScan(downloadDirectory);
-            mainHandler.post(() -> call.resolve(result));
+            try {
+                JSObject result = performMediaStoreScan(downloadDirectory);
+                mainHandler.post(() -> call.resolve(result));
+            } finally {
+                isScanning = false;
+            }
         });
     }
 
     private JSObject performMediaStoreScan(String downloadDirectory) {
         JSArray filesArray = new JSArray();
-        Set<String> foundPaths = new HashSet<>();
+        Set<String> foundContentUris = new HashSet<>();
+        Set<String> foundFilePaths = new HashSet<>();
         ContentResolver resolver = getContext().getContentResolver();
         Uri musicUri = MediaStore.Audio.Media.EXTERNAL_CONTENT_URI;
-        String[] projection = {
-                MediaStore.Audio.Media._ID, MediaStore.Audio.Media.TITLE, MediaStore.Audio.Media.ARTIST,
-                MediaStore.Audio.Media.ALBUM, MediaStore.Audio.Media.DURATION, MediaStore.Audio.Media.SIZE,
-                MediaStore.Audio.Media.DATE_MODIFIED, MediaStore.Audio.Media.DATA
-        };
+
+        String[] projection;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            projection = new String[]{
+                    MediaStore.Audio.Media._ID, MediaStore.Audio.Media.TITLE, MediaStore.Audio.Media.ARTIST,
+                    MediaStore.Audio.Media.ALBUM, MediaStore.Audio.Media.DURATION, MediaStore.Audio.Media.SIZE,
+                    MediaStore.Audio.Media.DATE_MODIFIED, MediaStore.Audio.Media.RELATIVE_PATH, MediaStore.Audio.Media.DISPLAY_NAME
+            };
+        } else {
+            projection = new String[]{
+                    MediaStore.Audio.Media._ID, MediaStore.Audio.Media.TITLE, MediaStore.Audio.Media.ARTIST,
+                    MediaStore.Audio.Media.ALBUM, MediaStore.Audio.Media.DURATION, MediaStore.Audio.Media.SIZE,
+                    MediaStore.Audio.Media.DATE_MODIFIED, MediaStore.Audio.Media.DATA
+            };
+        }
 
         String selection = buildMediaStoreMusicSelection();
-        String[] selectionArgs = null;
 
-        try (Cursor cursor = resolver.query(musicUri, projection, selection, selectionArgs, MediaStore.Audio.Media.DATE_MODIFIED + " DESC")) {
+        try (Cursor cursor = resolver.query(musicUri, projection, selection, null, MediaStore.Audio.Media.DATE_MODIFIED + " DESC")) {
             if (cursor != null && cursor.moveToFirst()) {
                 int idCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media._ID);
                 int titleCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.TITLE);
@@ -186,15 +216,49 @@ public class LocalMusicPlugin extends Plugin {
                 int durationCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DURATION);
                 int sizeCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.SIZE);
                 int modifiedCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DATE_MODIFIED);
-                int dataCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DATA);
+
+                int pathCol = -1;
+                int relPathCol = -1;
+                int displayNameCol = -1;
+
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    relPathCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.RELATIVE_PATH);
+                    displayNameCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DISPLAY_NAME);
+                } else {
+                    pathCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DATA);
+                }
 
                 do {
                     long id = cursor.getLong(idCol);
-                    String dataPath = cursor.getString(dataCol);
-                    
+                    Uri contentUri = ContentUris.withAppendedId(musicUri, id);
+                    String contentUriStr = contentUri.toString();
+
+                    String filePath = null;
+                    String relativePath = null;
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                        relativePath = cursor.getString(relPathCol);
+                        String displayName = cursor.getString(displayNameCol);
+                        if (relativePath != null && displayName != null) {
+                            filePath = Environment.getExternalStorageDirectory() + "/" + relativePath + displayName;
+                        }
+                    } else {
+                        filePath = cursor.getString(pathCol);
+                    }
+
                     if (downloadDirectory != null && !downloadDirectory.isEmpty()) {
-                        String downloadPath = Environment.getExternalStorageDirectory() + "/" + downloadDirectory;
-                        if (dataPath == null || !dataPath.startsWith(downloadPath)) {
+                        String normalizedDownloadDir = downloadDirectory.replace("\\", "/");
+                        if (!normalizedDownloadDir.endsWith("/")) {
+                            normalizedDownloadDir = normalizedDownloadDir + "/";
+                        }
+                        boolean matchesDir = false;
+                        if (relativePath != null) {
+                            matchesDir = relativePath.startsWith(normalizedDownloadDir) || normalizedDownloadDir.startsWith(relativePath);
+                        } else if (filePath != null) {
+                            String normalizedFilePath = filePath.replace("\\", "/");
+                            String downloadPath = Environment.getExternalStorageDirectory().getPath().replace("\\", "/") + "/" + normalizedDownloadDir;
+                            matchesDir = normalizedFilePath.startsWith(downloadPath);
+                        }
+                        if (!matchesDir) {
                             continue;
                         }
                     }
@@ -203,14 +267,20 @@ public class LocalMusicPlugin extends Plugin {
                     if (duration > 0 && duration < MIN_DURATION) {
                         continue;
                     }
-                    
+
+                    if (foundContentUris.contains(contentUriStr)) {
+                        continue;
+                    }
+                    foundContentUris.add(contentUriStr);
+                    if (filePath != null) {
+                        foundFilePaths.add(new File(filePath).getAbsolutePath());
+                    }
+
                     String title = cursor.getString(titleCol);
                     String artist = cursor.getString(artistCol);
-                    
-                    if (dataPath != null) {
-                        foundPaths.add(new File(dataPath).getAbsolutePath());
-                        File file = new File(dataPath);
-                        String[] parsed = parseFileName(file.getName());
+
+                    if (filePath != null) {
+                        String[] parsed = parseFileName(new File(filePath).getName());
                         if (isValid(parsed[0])) {
                             title = parsed[0];
                             if (isValid(parsed[1])) {
@@ -218,14 +288,14 @@ public class LocalMusicPlugin extends Plugin {
                             }
                         }
                     }
-                    
+
                     filesArray.put(new JSObject()
-                            .put("id", String.valueOf(id))
+                            .put("id", "mediastore:" + id)
                             .put("name", formatUnknown(title))
                             .put("artist", formatUnknown(artist))
                             .put("album", formatUnknown(cursor.getString(albumCol)))
                             .put("duration", duration)
-                            .put("localPath", ContentUris.withAppendedId(musicUri, id).toString())
+                            .put("localPath", contentUriStr)
                             .put("fileSize", cursor.getLong(sizeCol))
                             .put("modifiedTime", cursor.getLong(modifiedCol) * 1000));
                 } while (cursor.moveToNext());
@@ -236,15 +306,12 @@ public class LocalMusicPlugin extends Plugin {
 
         String scanDir = (downloadDirectory != null && !downloadDirectory.isEmpty())
                 ? downloadDirectory : DEFAULT_DOWNLOAD_DIR;
-        File downloadDir = new File(Environment.getExternalStorageDirectory(), scanDir);
-        if (downloadDir.exists() && downloadDir.canRead()) {
+        File downloadDirFile = new File(Environment.getExternalStorageDirectory(), scanDir);
+        if (downloadDirFile.exists() && downloadDirFile.canRead()) {
             List<JSObject> directFiles = new ArrayList<>();
-            scanDirectory(downloadDir, directFiles, 0);
+            scanDirectory(downloadDirFile, directFiles, 0, foundFilePaths);
             for (JSObject file : directFiles) {
-                String path = file.getString("localPath");
-                if (path != null && !foundPaths.contains(path)) {
-                    filesArray.put(file);
-                }
+                filesArray.put(file);
             }
         }
 
@@ -266,29 +333,32 @@ public class LocalMusicPlugin extends Plugin {
     private void executeAllStorageScan(PluginCall call, String downloadDirectory) {
         isScanning = true;
         executor.execute(() -> {
-            List<JSObject> filesList = new ArrayList<>();
-            File extStorage = Environment.getExternalStorageDirectory();
+            try {
+                List<JSObject> filesList = new ArrayList<>();
+                File extStorage = Environment.getExternalStorageDirectory();
 
-            if (downloadDirectory != null && !downloadDirectory.isEmpty()) {
-                File downloadDir = new File(extStorage, downloadDirectory);
-                if (downloadDir.exists() && downloadDir.canRead()) {
-                    scanDirectory(downloadDir, filesList, 0);
+                if (downloadDirectory != null && !downloadDirectory.isEmpty()) {
+                    File downloadDir = new File(extStorage, downloadDirectory);
+                    if (downloadDir.exists() && downloadDir.canRead()) {
+                        scanDirectory(downloadDir, filesList, 0, new HashSet<>());
+                    }
                 }
+
+                if (filesList.isEmpty() && extStorage != null && extStorage.canRead()) {
+                    scanDirectory(extStorage, filesList, 0, new HashSet<>());
+                }
+
+                JSArray filesArray = new JSArray();
+                for (JSObject file : filesList) filesArray.put(file);
+
+                mainHandler.post(() -> resolveSuccess(call, "files", filesArray));
+            } finally {
+                isScanning = false;
             }
-
-            if (filesList.isEmpty() && extStorage != null && extStorage.canRead()) {
-                scanDirectory(extStorage, filesList, 0);
-            }
-
-            JSArray filesArray = new JSArray();
-            for (JSObject file : filesList) filesArray.put(file);
-
-            isScanning = false;
-            mainHandler.post(() -> resolveSuccess(call, "files", filesArray));
         });
     }
 
-    private void scanDirectory(File directory, List<JSObject> filesList, int depth) {
+    private void scanDirectory(File directory, List<JSObject> filesList, int depth, Set<String> excludePaths) {
         if (depth > MAX_DEPTH || directory == null || !directory.canRead() || filesList.size() >= MAX_FILES) return;
 
         File[] children = directory.listFiles();
@@ -300,8 +370,11 @@ public class LocalMusicPlugin extends Plugin {
         for (File file : children) {
             if (filesList.size() >= MAX_FILES) return;
             if (file.isDirectory() && !file.getName().startsWith(".") && !isSystemDirectory(file)) {
-                scanDirectory(file, filesList, depth + 1);
+                scanDirectory(file, filesList, depth + 1, excludePaths);
             } else if (isAudioFile(file.getName())) {
+                if (excludePaths.contains(file.getAbsolutePath())) {
+                    continue;
+                }
                 JSObject audioFile = extractAudioMetadata(file);
                 if (audioFile != null) {
                     filesList.add(audioFile);
@@ -321,10 +394,13 @@ public class LocalMusicPlugin extends Plugin {
             return null;
         }
 
+        String absolutePath = file.getAbsolutePath();
+        String fileId = "file:" + absolutePath;
+
         String[] parsed = parseFileName(file.getName());
         JSObject audioFile = new JSObject()
-                .put("id", String.valueOf(file.hashCode()))
-                .put("localPath", file.getAbsolutePath())
+                .put("id", fileId)
+                .put("localPath", absolutePath)
                 .put("fileSize", fileLength)
                 .put("modifiedTime", file.lastModified())
                 .put("name", parsed[0])
@@ -333,7 +409,7 @@ public class LocalMusicPlugin extends Plugin {
                 .put("duration", 0);
 
         try (MediaMetadataRetriever retriever = new MediaMetadataRetriever()) {
-            setRetrieverDataSource(retriever, file.getAbsolutePath());
+            setRetrieverDataSource(retriever, absolutePath);
             String mTitle = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_TITLE);
             String mArtist = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ARTIST);
             String mAlbum = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ALBUM);
@@ -354,7 +430,7 @@ public class LocalMusicPlugin extends Plugin {
         } catch (Exception e) {
             android.util.Log.w("LocalMusicPlugin", "Metadata extraction failed for: " + file.getName() + " - " + e.getMessage());
         }
-        
+
         return audioFile;
     }
 
@@ -442,14 +518,14 @@ public class LocalMusicPlugin extends Plugin {
             ContentResolver resolver = getContext().getContentResolver();
 
             if (localPath.startsWith("content://")) {
-                deleted = tryDelete(() -> resolver.delete(Uri.parse(localPath), null, null) > 0);
-            }
-            if (!deleted) {
+                Uri contentUri = Uri.parse(localPath);
+                deleted = tryDelete(() -> resolver.delete(contentUri, null, null) > 0);
+            } else {
                 deleted = tryDelete(() -> resolver.delete(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, MediaStore.Audio.Media.DATA + "=?", new String[]{localPath}) > 0);
-            }
-            if (!deleted) {
-                File file = new File(localPath);
-                deleted = !file.exists() || file.delete();
+                if (!deleted) {
+                    File file = new File(localPath);
+                    deleted = !file.exists() || file.delete();
+                }
             }
 
             if (deleted) resolveSuccess(call, null, null);
@@ -642,10 +718,10 @@ public class LocalMusicPlugin extends Plugin {
         if (!isValid(fileName)) {
             return new String[]{"未知歌曲", null};
         }
-        
+
         int dot = fileName.lastIndexOf('.');
         String name = dot > 0 ? fileName.substring(0, dot) : fileName;
-        
+
         int dashIndex = name.lastIndexOf(" - ");
         if (dashIndex > 0 && dashIndex < name.length() - 3) {
             String songName = name.substring(0, dashIndex).trim();
@@ -657,7 +733,7 @@ public class LocalMusicPlugin extends Plugin {
                 return new String[]{songName, null};
             }
         }
-        
+
         return new String[]{name.trim(), null};
     }
 
